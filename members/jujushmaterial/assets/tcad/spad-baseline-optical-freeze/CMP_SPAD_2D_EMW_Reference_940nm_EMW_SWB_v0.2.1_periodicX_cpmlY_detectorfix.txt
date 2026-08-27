@@ -1,0 +1,157 @@
+#setdep @node|snmesh@
+
+# =============================================================================
+# CMP SPAD 2D EMW Reference - 940 nm Boundary-Corrected Run v0.2.1
+# Sentaurus Device Electromagnetic Wave Solver T-2022.03
+#
+# PURPOSE
+#   Boundary-corrected 2D EMW screening simulation of the literature-constrained
+#   reference SPAD optical structure at 940 nm.
+#
+# RESEARCH INTERPRETATION
+#   - This is a 2D screening / workflow-validation calculation.
+#   - It is NOT an exact 3D annular optical result.
+#   - Final optical claims require 3D EMW and mesh convergence.
+#
+# SOURCE NORMALIZATION
+#   [surrogate simulation setting]
+#   Normal-incidence harmonic plane wave from the top, intensity = 1 W/cm^2.
+#   The same normalization must be held fixed for Reference / Gao Square /
+#   Annular comparisons.
+#
+# MATERIAL OPTICS
+#   [sanity-run setting]
+#   Use the installed Sentaurus default CRI database for Silicon, Oxide, and
+#   Ambient with wavelength-dependent real and imaginary components.
+#   Before final publication-quality comparison, the exact Si/SiO2 optical
+#   constants source/version must be frozen and documented.
+#
+# POLARIZATION
+#   First sanity run = TE.
+#   A matched TM run will be required later for polarization sensitivity.
+#
+# OUTPUTS
+#   - final |E| field map
+#   - absorbed photon density
+#   - optical generation
+#   - absorbed power density
+#   - power flux density
+#
+# TERMINATION
+#   Detector seeks a harmonic steady state.
+#   TotalTimeSteps provides a hard safety cap so a bad run cannot continue
+#   indefinitely. FailureOnUnreachedTolerance=No is used only for this sanity
+#   stage so logs/results can still be inspected if the cap is reached.
+# =============================================================================
+
+Globals {
+  GridFile = "n@node|snmesh@_msh.tdr"
+  ResultFile = "n@node@_eml.plt"
+  OutputFilePrefix = "n@node@_"
+  Temperature = 300
+  CompressTDR = Yes
+  TotalTimeSteps = 50000
+}
+
+# -----------------------------------------------------------------------------
+# Wavelength-dependent complex refractive indices
+# -----------------------------------------------------------------------------
+
+ComplexRefractiveIndex {
+  Material = "Silicon"
+  WavelengthDep = {Real, Imag}
+}
+
+ComplexRefractiveIndex {
+  Material = "Oxide"
+  WavelengthDep = {Real, Imag}
+}
+
+ComplexRefractiveIndex {
+  Material = "Ambient"
+  WavelengthDep = {Real, Imag}
+}
+
+# -----------------------------------------------------------------------------
+# 2D screening boundary condition
+# -----------------------------------------------------------------------------
+# [surrogate simulation setting]
+# Lateral X boundaries are PeriodicOblique ONLY as a computational boundary
+# for the 2D plane-wave screening problem. This does NOT define a physical
+# optical pitch/FF for the Reference SPAD and does NOT add any intentional
+# periodic Si/STI pattern to the reference geometry.
+#
+# Reason:
+#   - The T-2022.03 EMW guide states that a 2D TFSF excitation line is
+#     sufficient to close the total-field region when the lateral boundaries
+#     are periodic.
+#   - The guide also describes periodic side BC + absorbing top/bottom BC as a
+#     typical plane-wave setup for CIS/solar-cell optical simulations.
+#   - PeriodicOblique is recommended by the guide for stability even at normal
+#     incidence.
+#
+# Top/bottom Y boundaries remain CPML.
+
+Boundary {
+  Type = PeriodicOblique
+  Sides = {X}
+}
+
+Boundary {
+  Type = CPML
+  Sides = {Y}
+  Thickness = 15
+}
+
+# -----------------------------------------------------------------------------
+# 940 nm normal-incidence excitation
+# -----------------------------------------------------------------------------
+
+PlaneWaveExcitation {
+  Direction = fromTop
+  Wavelength = 940
+  Signal = Harmonic
+  NRise = 4
+  Polarization = TE
+  Intensity = 1.0
+}
+
+# -----------------------------------------------------------------------------
+# Final electromagnetic field map
+# -----------------------------------------------------------------------------
+
+Plot {
+  Name = "field940_TE"
+  Quantity = {AbsElectricField, Region}
+  FinalPlot = Yes
+}
+
+# -----------------------------------------------------------------------------
+# Optical quantities used for SPAD photogeneration analysis
+# Output is kept on the native tensor grid.
+# -----------------------------------------------------------------------------
+
+Extractor {
+  Name = "optical940_TE"
+  Quantity = {AbsorbedPhotonDensity, OpticalGeneration, AbsorbedPowerDensity, PowerFluxDensity, Region}
+}
+
+# -----------------------------------------------------------------------------
+# Harmonic steady-state convergence detector
+# Detector sampling is intentionally sparse to reduce overhead on ~1M cells.
+# -----------------------------------------------------------------------------
+
+Detector {
+  Type = Periodic
+  Tolerance = 0.001
+
+  # PeriodicOblique boundary uses the global energy-density integral
+  # for the harmonic detector error norm. Therefore every grid point
+  # must participate in that integral.
+  StepX = 1
+  StepY = 1
+  StepZ = 1
+
+  BreakOnError = Yes
+  FailureOnUnreachedTolerance = No
+}
