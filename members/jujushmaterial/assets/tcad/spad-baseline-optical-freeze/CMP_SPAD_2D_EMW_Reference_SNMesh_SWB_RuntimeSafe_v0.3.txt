@@ -1,0 +1,74 @@
+#setdep @node|sde@
+
+# =============================================================================
+# CMP SPAD 2D EMW Reference - SNMESH SWB Manual Tensor v0.3
+# Sentaurus Mesh T-2022.03
+#
+# CHANGE FROM v0.2
+#   1) minCellSize = 0.005 um
+#   2) grading off
+#
+# REASON
+#   [manual-driven numerical correction]
+#   The EMW User Guide states that the FDTD time step is controlled by the
+#   smallest tensor cell and recommends minCellSize >= 0.001 um for efficient
+#   EMW runs. It also warns that graded EMW meshes can introduce overly thin
+#   interface cells and numeric dispersion.
+#
+# PURPOSE
+#   Produce the first runtime-safe 940 nm 2D tensor mesh for the reference SPAD.
+#
+# IMPORTANT
+#   - Frozen physical geometry is unchanged.
+#   - EnableTensor is retained because the local T-2022.03 installation fails
+#     on the EnableEMW / -emw execution path.
+#   - No AllowThinLayerRemoval.
+#   - 7 nm UpperSi remains explicitly preserved by interface cuts.
+#   - Mesh settings are [surrogate simulation settings], not process values.
+# =============================================================================
+
+Title "CMP SPAD 2D EMW Reference - runtime-safe tensor mesh v0.3"
+
+IOControls {
+  EnableTensor
+  inputFile = "n@node|sde@_full_reference_optical_bnd.tdr"
+  outputFile = "n@node@_msh.tdr"
+  verbosity = 2
+}
+
+Tensor {
+  Mesh {
+
+    # -------------------------------------------------------------------------
+    # Global first-pass optical resolution
+    # -------------------------------------------------------------------------
+    # [surrogate simulation setting]
+    maxCellSize direction "x" 0.025
+    maxCellSize direction "y" 0.025
+
+    # Prevent sub-nm / very-small interface cells from collapsing the FDTD dt.
+    # 5 nm still allows the explicitly preserved 7 nm UpperSi layer.
+    minCellSize = 0.005
+
+    # -------------------------------------------------------------------------
+    # Optical stack + SCR neighborhood
+    # -------------------------------------------------------------------------
+    # [surrogate simulation setting]
+    window "OpticalActive" -24.0 24.0 -0.340 0.800
+    maxCellSize window direction "OpticalActive" "y" 0.010
+
+    # -------------------------------------------------------------------------
+    # Critical horizontal interfaces
+    # -------------------------------------------------------------------------
+    yCuts = (
+      -0.332
+      -0.325
+      -0.300
+       0.000
+       0.800
+    )
+
+    # EMW-guide recommendation: avoid graded cells / excessive numeric dispersion.
+    grading off
+  }
+}
