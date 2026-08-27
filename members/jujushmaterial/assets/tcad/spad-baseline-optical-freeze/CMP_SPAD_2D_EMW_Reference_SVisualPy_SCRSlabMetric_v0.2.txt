@@ -1,0 +1,690 @@
+#setdep @node|emw@
+# =============================================================================
+# CMP SPAD 2D EMW Reference - SCR-Slab Optical Metric Extractor v0.2
+# Sentaurus Visual T-2022.03
+#
+# PURPOSE
+#   Quantify 940 nm OpticalGeneration inside the electrically extracted
+#   SCR depth band of the frozen Reference SPAD.
+#
+# IMPORTANT INTERPRETATION
+#   The electrical file provides SCR boundaries extracted on the frozen
+#   electrical center cutline:
+#
+#       z_SCR_p_if = 0.00952007710343 um
+#       z_SCR_n_if = 0.350885814092   um
+#
+#   Those values are exact outputs of the frozen electrical baseline, but
+#   they are NOT yet an x-dependent 2D SCR boundary map.
+#
+#   Therefore this script computes:
+#
+#       "central-SCR slab proxy"
+#
+#   by applying the electrically extracted p/n depth boundaries across the
+#   common active aperture x = -12.5 ... +12.5 um.
+#
+#   This is the first primary 2D optical screening metric, but the final
+#   A+B electro-optical integration must use a spatially resolved SCR/ATP
+#   map aligned to the optical grid.
+#
+# OUTPUTS
+#   1) G_SCR_slab_2D = integral integral G(x,y) dx dy
+#   2) average OpticalGeneration inside the SCR slab
+#   3) equivalent EHP generation rate for a nominal 1 um out-of-plane
+#      thickness (diagnostic normalization only)
+#   4) y-dependent lateral integral/mean/max/CV profile
+#   5) diagnostic anchor profile at y = 0.180202945597 um
+#
+# REFERENCE RULES
+#   ReferencePitch = N/A
+#   ReferenceFF    = N/A
+#
+# NUMERICAL INTEGRATION
+#   The SCR width is ~0.341366 um.
+#   NY_SAMPLES = 69 gives ~5.02 nm y spacing, comparable to the current
+#   runtime-safe optical tensor mesh minimum cell size (5 nm).
+#
+#   [surrogate numerical integration setting]
+#
+# UNITS
+#   OpticalGeneration G: cm^-3 s^-1
+#   x,y coordinates: um
+#
+#   Integral over x,y:
+#       cm^-3 s^-1 * um^2
+#
+#   For a nominal 1 um out-of-plane thickness:
+#       1 um^3 = 1e-12 cm^3
+#
+#   so:
+#       rate_per_1um = G_area_integral * 1e-12 [s^-1]
+#
+#   This rate is a 2D normalization diagnostic and is NOT claimed as the
+#   absolute generation rate of the full 3D SPAD.
+# =============================================================================
+
+import os
+import fnmatch
+import numpy as np
+
+VIS_NODE = @node@
+ENODE = @node|emw@
+
+CASE_ID = "Reference_2D_940nm_TE"
+
+OPTICAL_TDR = f"n{ENODE}_optical940_TE_eml.tdr"
+
+# ----------------------------------------------------------------------
+# Frozen electrical-baseline SCR outputs
+# source: n71_stage1_py_metrics.txt
+# evaluation bias = 15.6 V
+# ----------------------------------------------------------------------
+Y_SCR_P_UM = 0.00952007710343
+Y_SCR_N_UM = 0.350885814092
+Y_SCR_CENTER_UM = 0.180202945597
+W_SCR_UM = 0.341365736988
+
+Y_ANCHOR_UM = 0.180202945597
+
+# ~25 um reference active aperture
+ACTIVE_X_MIN_UM = -12.5
+ACTIVE_X_MAX_UM = +12.5
+
+# [surrogate numerical integration setting]
+NY_SAMPLES = 69
+
+PREFIX = f"n{VIS_NODE}_emw_ref_metric_v02"
+DEPTH_CSV = f"{PREFIX}_scr_depth_profile.csv"
+ANCHOR_CSV = f"{PREFIX}_anchor_active.csv"
+METRICS_TXT = f"{PREFIX}_metrics.txt"
+
+np.set_printoptions(precision=12, suppress=False)
+
+
+# ----------------------------------------------------------------------
+# Utilities
+# ----------------------------------------------------------------------
+def is_svisual_error(obj):
+    if not isinstance(obj, str):
+        return False
+    s = obj.strip().lower()
+    return (
+        s.startswith("error:") or
+        s.startswith("validation failed") or
+        "reference resolving failed" in s or
+        "does not exist" in s
+    )
+
+
+def normalize_dataset_id(obj):
+    if isinstance(obj, (list, tuple)):
+        if len(obj) == 1:
+            return obj[0]
+        return obj
+    return obj
+
+
+def safe_list_variables(dataset):
+    ds = normalize_dataset_id(dataset)
+    result = sv.list_variables(dataset=ds)
+
+    if is_svisual_error(result):
+        raise RuntimeError(
+            f"{ds}: list_variables returned SVisual error: {result}"
+        )
+
+    if isinstance(result, str):
+        return [result]
+
+    return list(result)
+
+
+def pickvar(dataset, patterns):
+    names = safe_list_variables(dataset)
+
+    for pat in patterns:
+        p = pat.lower()
+        for name in names:
+            if fnmatch.fnmatch(name.lower(), p):
+                return name
+
+    return None
+
+
+def get_data(dataset, varname):
+    ds = normalize_dataset_id(dataset)
+    return np.asarray(
+        sv.get_variable_data(varname=varname, dataset=ds),
+        dtype=float
+    )
+
+
+def finite_xy(x, y):
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+
+    m = np.isfinite(x) & np.isfinite(y)
+    return x[m], y[m]
+
+
+def sort_unique_average(x, y):
+    x, y = finite_xy(x, y)
+
+    idx = np.argsort(x, kind="mergesort")
+    x = x[idx]
+    y = y[idx]
+
+    xu, inv = np.unique(x, return_inverse=True)
+
+    sums = np.bincount(inv, weights=y)
+    counts = np.bincount(inv)
+
+    yu = sums / np.maximum(counts, 1)
+
+    return xu, yu
+
+
+def save_csv(filename, columns):
+    names = list(columns.keys())
+    arrays = [np.asarray(columns[name], dtype=float) for name in names]
+
+    if not arrays:
+        raise RuntimeError(f"{filename}: no columns")
+
+    n = len(arrays[0])
+
+    if any(len(a) != n for a in arrays):
+        raise RuntimeError(
+            f"{filename}: column-length mismatch "
+            f"{[len(a) for a in arrays]}"
+        )
+
+    data = np.column_stack(arrays)
+
+    np.savetxt(
+        filename,
+        data,
+        delimiter=",",
+        header=",".join(names),
+        comments="",
+        fmt="%.12e"
+    )
+
+
+def metric_stats(values):
+    v = np.asarray(values, dtype=float)
+    v = v[np.isfinite(v)]
+
+    if v.size == 0:
+        raise RuntimeError("No finite values for statistics")
+
+    mean = float(np.mean(v))
+    std = float(np.std(v))
+
+    return {
+        "count": int(v.size),
+        "mean": mean,
+        "median": float(np.median(v)),
+        "min": float(np.min(v)),
+        "max": float(np.max(v)),
+        "std": std,
+        "cv": float(std / mean) if mean != 0.0 else np.nan,
+        "p10": float(np.percentile(v, 10.0)),
+        "p90": float(np.percentile(v, 90.0)),
+        "max_over_mean": float(np.max(v) / mean) if mean != 0.0 else np.nan,
+    }
+
+
+def write_metric(fh, name, value):
+    if value is None:
+        fh.write(f"{name} = NA\n")
+        return
+
+    try:
+        fv = float(value)
+    except Exception:
+        fh.write(f"{name} = {value}\n")
+        return
+
+    if np.isfinite(fv):
+        fh.write(f"{name} = {fv:.12g}\n")
+    else:
+        fh.write(f"{name} = NA\n")
+
+
+def create_horizontal_cut(source_plot, source_ds, at_y, name):
+    attempts = [
+        (
+            "plot+Silicon",
+            dict(
+                at=at_y,
+                plot=source_plot,
+                materials=["Silicon"],
+                name=name
+            )
+        ),
+        (
+            "plot-only",
+            dict(
+                at=at_y,
+                plot=source_plot,
+                name=name
+            )
+        ),
+        (
+            "dataset+Silicon",
+            dict(
+                at=at_y,
+                dataset=source_ds,
+                materials=["Silicon"],
+                name=name
+            )
+        ),
+        (
+            "dataset-only",
+            dict(
+                at=at_y,
+                dataset=source_ds,
+                name=name
+            )
+        ),
+    ]
+
+    errors = []
+
+    for label, kwargs in attempts:
+        try:
+            result = sv.create_cutline("y", **kwargs)
+        except Exception as exc:
+            errors.append(f"{label}: exception={exc}")
+            continue
+
+        if is_svisual_error(result):
+            errors.append(f"{label}: returned={result}")
+            continue
+
+        ds = normalize_dataset_id(result)
+
+        print(
+            f"EMW_METRIC_V02: CUT_CREATED "
+            f"y={at_y:.12g} method={label} dataset={ds}"
+        )
+
+        return ds
+
+    raise RuntimeError(
+        f"Horizontal cutline failed at y={at_y}: "
+        + " || ".join(errors)
+    )
+
+
+def extract_active_cutline(source_plot, source_ds, at_y, cut_name):
+    cut_ds = create_horizontal_cut(
+        source_plot=source_plot,
+        source_ds=source_ds,
+        at_y=at_y,
+        name=cut_name
+    )
+
+    xname = pickvar(
+        cut_ds,
+        [
+            "X", "x",
+            "X-Coordinate", "XCoordinate",
+            "Coordinate-X", "CoordinateX",
+            "Position-X", "PositionX"
+        ]
+    )
+
+    gname = pickvar(
+        cut_ds,
+        [
+            "OpticalGeneration",
+            "*OpticalGeneration*",
+            "*Optical*Generation*"
+        ]
+    )
+
+    if xname is None:
+        raise RuntimeError(
+            f"X coordinate not found in cutline {cut_ds}: "
+            f"{safe_list_variables(cut_ds)}"
+        )
+
+    if gname is None:
+        raise RuntimeError(
+            f"OpticalGeneration not found in cutline {cut_ds}: "
+            f"{safe_list_variables(cut_ds)}"
+        )
+
+    x_raw = get_data(cut_ds, xname)
+    g_raw = get_data(cut_ds, gname)
+
+    x, g = sort_unique_average(x_raw, g_raw)
+
+    m = (
+        np.isfinite(x) &
+        np.isfinite(g) &
+        (x >= ACTIVE_X_MIN_UM) &
+        (x <= ACTIVE_X_MAX_UM)
+    )
+
+    xa = x[m]
+    ga = g[m]
+
+    if xa.size < 2:
+        raise RuntimeError(
+            f"Too few points inside active aperture at y={at_y}: "
+            f"{xa.size}"
+        )
+
+    return xa, ga
+
+
+# ----------------------------------------------------------------------
+# 0. Electrical-baseline consistency checks
+# ----------------------------------------------------------------------
+if not (Y_SCR_N_UM > Y_SCR_P_UM):
+    raise RuntimeError("Invalid SCR boundary ordering")
+
+width_from_edges = Y_SCR_N_UM - Y_SCR_P_UM
+
+if abs(width_from_edges - W_SCR_UM) > 1.0e-9:
+    raise RuntimeError(
+        "SCR width mismatch: "
+        f"edges={width_from_edges}, metric={W_SCR_UM}"
+    )
+
+center_from_edges = 0.5 * (Y_SCR_P_UM + Y_SCR_N_UM)
+
+if abs(center_from_edges - Y_SCR_CENTER_UM) > 1.0e-9:
+    raise RuntimeError(
+        "SCR center mismatch: "
+        f"edges={center_from_edges}, metric={Y_SCR_CENTER_UM}"
+    )
+
+print("EMW_METRIC_V02: ELECTRICAL_SCR_FINGERPRINT=PASS")
+print(f"EMW_METRIC_V02: SCR_p_um={Y_SCR_P_UM:.12g}")
+print(f"EMW_METRIC_V02: SCR_n_um={Y_SCR_N_UM:.12g}")
+print(f"EMW_METRIC_V02: SCR_center_um={Y_SCR_CENTER_UM:.12g}")
+print(f"EMW_METRIC_V02: SCR_width_um={W_SCR_UM:.12g}")
+
+
+# ----------------------------------------------------------------------
+# 1. Load EMW OpticalGeneration dataset
+# ----------------------------------------------------------------------
+print(f"EMW_METRIC_V02: CASE={CASE_ID}")
+print(f"EMW_METRIC_V02: INPUT={OPTICAL_TDR}")
+
+if not os.path.exists(OPTICAL_TDR):
+    raise RuntimeError(
+        f"EMW optical result does not exist: {OPTICAL_TDR}"
+    )
+
+requested_ds = "EMW_OPTICAL_V02"
+loaded_ds = sv.load_file(OPTICAL_TDR, name=requested_ds)
+
+if is_svisual_error(loaded_ds):
+    raise RuntimeError(
+        f"load_file returned SVisual error: {loaded_ds}"
+    )
+
+source_ds = normalize_dataset_id(
+    loaded_ds
+    if isinstance(loaded_ds, (str, list, tuple))
+    else requested_ds
+)
+
+source_plot = sv.create_plot(
+    name="Plot_EMW_OpticalGeneration_2D_V02",
+    dataset=source_ds
+)
+
+if is_svisual_error(source_plot):
+    raise RuntimeError(
+        f"create_plot returned SVisual error: {source_plot}"
+    )
+
+
+# ----------------------------------------------------------------------
+# 2. Diagnostic anchor cutline
+# ----------------------------------------------------------------------
+xa, ga = extract_active_cutline(
+    source_plot=source_plot,
+    source_ds=source_ds,
+    at_y=Y_ANCHOR_UM,
+    cut_name="CUT_V02_ANCHOR"
+)
+
+anchor_stats = metric_stats(ga)
+
+save_csv(
+    ANCHOR_CSV,
+    {
+        "X_um": xa,
+        "OpticalGeneration_cm-3_s-1": ga,
+    }
+)
+
+
+# ----------------------------------------------------------------------
+# 3. SCR slab numerical integration
+# ----------------------------------------------------------------------
+y_samples = np.linspace(
+    Y_SCR_P_UM,
+    Y_SCR_N_UM,
+    NY_SAMPLES
+)
+
+line_integral = []
+line_mean = []
+line_max = []
+line_min = []
+line_std = []
+line_cv = []
+line_count = []
+
+for i, y in enumerate(y_samples):
+    xcut, gcut = extract_active_cutline(
+        source_plot=source_plot,
+        source_ds=source_ds,
+        at_y=float(y),
+        cut_name=f"CUT_V02_SCR_{i:03d}"
+    )
+
+    stats = metric_stats(gcut)
+
+    # Integral G dx
+    # unit: cm^-3 s^-1 * um
+    gx_int = float(np.trapz(gcut, xcut))
+
+    line_integral.append(gx_int)
+    line_mean.append(stats["mean"])
+    line_max.append(stats["max"])
+    line_min.append(stats["min"])
+    line_std.append(stats["std"])
+    line_cv.append(stats["cv"])
+    line_count.append(stats["count"])
+
+
+line_integral = np.asarray(line_integral, dtype=float)
+line_mean = np.asarray(line_mean, dtype=float)
+line_max = np.asarray(line_max, dtype=float)
+line_min = np.asarray(line_min, dtype=float)
+line_std = np.asarray(line_std, dtype=float)
+line_cv = np.asarray(line_cv, dtype=float)
+line_count = np.asarray(line_count, dtype=float)
+
+
+# Integral [ integral G dx ] dy
+# unit: cm^-3 s^-1 * um^2
+G_SCR_SLAB_2D = float(np.trapz(line_integral, y_samples))
+
+# Geometric rectangular slab area [um^2]
+SCR_SLAB_AREA_UM2 = (
+    (ACTIVE_X_MAX_UM - ACTIVE_X_MIN_UM) *
+    (Y_SCR_N_UM - Y_SCR_P_UM)
+)
+
+# Average G in the slab [cm^-3 s^-1]
+G_SCR_SLAB_AVG = (
+    G_SCR_SLAB_2D / SCR_SLAB_AREA_UM2
+)
+
+# 2D diagnostic equivalent generation rate for 1 um out-of-plane thickness
+# [s^-1]
+G_SCR_EQ_RATE_PER_1UM = G_SCR_SLAB_2D * 1.0e-12
+
+# Depth at which lateral integral is maximum
+idx_peak_int = int(np.nanargmax(line_integral))
+Y_PEAK_LINEINT_UM = float(y_samples[idx_peak_int])
+
+# Depth at which lateral mean is maximum
+idx_peak_mean = int(np.nanargmax(line_mean))
+Y_PEAK_LINEMEAN_UM = float(y_samples[idx_peak_mean])
+
+
+save_csv(
+    DEPTH_CSV,
+    {
+        "Y_um": y_samples,
+        "Integral_Gdx_cm-3_s-1_um": line_integral,
+        "MeanG_cm-3_s-1": line_mean,
+        "MaxG_cm-3_s-1": line_max,
+        "MinG_cm-3_s-1": line_min,
+        "StdG_cm-3_s-1": line_std,
+        "CV": line_cv,
+        "PointCount": line_count,
+    }
+)
+
+
+# ----------------------------------------------------------------------
+# 4. Metric report
+# ----------------------------------------------------------------------
+with open(METRICS_TXT, "w") as fh:
+    fh.write("# CMP SPAD 2D EMW Reference Metric Extractor v0.2\n")
+    fh.write("# Central-SCR slab proxy based on frozen electrical boundaries\n")
+    fh.write("# NOT an x-dependent full 2D electrical SCR mask\n\n")
+
+    fh.write(f"CaseID = {CASE_ID}\n")
+    fh.write("ReferencePitch = N/A\n")
+    fh.write("ReferenceFF = N/A\n")
+
+    fh.write("\n[ElectricalSCR]\n")
+    write_metric(fh, "SCR_p_um", Y_SCR_P_UM)
+    write_metric(fh, "SCR_n_um", Y_SCR_N_UM)
+    write_metric(fh, "SCR_center_um", Y_SCR_CENTER_UM)
+    write_metric(fh, "SCR_width_um", W_SCR_UM)
+
+    fh.write("\n[IntegrationDomain]\n")
+    write_metric(fh, "ActiveXMin_um", ACTIVE_X_MIN_UM)
+    write_metric(fh, "ActiveXMax_um", ACTIVE_X_MAX_UM)
+    write_metric(fh, "NYSamples", NY_SAMPLES)
+    write_metric(fh, "SCRSlabArea_um2", SCR_SLAB_AREA_UM2)
+
+    fh.write("\n[Primary2DScreeningMetric]\n")
+    write_metric(
+        fh,
+        "G_SCR_slab_2D_cm-3_s-1_um2",
+        G_SCR_SLAB_2D
+    )
+    write_metric(
+        fh,
+        "G_SCR_slab_average_cm-3_s-1",
+        G_SCR_SLAB_AVG
+    )
+    write_metric(
+        fh,
+        "G_SCR_equiv_rate_per_1um_s-1",
+        G_SCR_EQ_RATE_PER_1UM
+    )
+
+    # Reference baseline normalization by definition.
+    write_metric(fh, "Gain_vs_Reference", 1.0)
+
+    fh.write("\n[DepthAlignmentDiagnostics]\n")
+    write_metric(
+        fh,
+        "Y_peak_lateral_integral_um",
+        Y_PEAK_LINEINT_UM
+    )
+    write_metric(
+        fh,
+        "Y_peak_lateral_mean_um",
+        Y_PEAK_LINEMEAN_UM
+    )
+    write_metric(
+        fh,
+        "Y_peak_integral_minus_SCRcenter_nm",
+        (Y_PEAK_LINEINT_UM - Y_SCR_CENTER_UM) * 1000.0
+    )
+    write_metric(
+        fh,
+        "Y_peak_mean_minus_SCRcenter_nm",
+        (Y_PEAK_LINEMEAN_UM - Y_SCR_CENTER_UM) * 1000.0
+    )
+
+    fh.write("\n[AnchorDiagnostics]\n")
+    write_metric(fh, "AnchorDepth_um", Y_ANCHOR_UM)
+
+    for key, val in anchor_stats.items():
+        write_metric(fh, f"Ganchor_active_{key}", val)
+
+    fh.write("\n[Files]\n")
+    fh.write(f"DepthProfileCSV = {DEPTH_CSV}\n")
+    fh.write(f"AnchorCSV = {ANCHOR_CSV}\n")
+
+
+# ----------------------------------------------------------------------
+# 5. SWB console summary
+# ----------------------------------------------------------------------
+print("EMW_METRIC_V02: ===== SCR SLAB SUMMARY =====")
+print(
+    f"EMW_METRIC_V02: ActiveX_um="
+    f"[{ACTIVE_X_MIN_UM:.6g}, {ACTIVE_X_MAX_UM:.6g}]"
+)
+print(f"EMW_METRIC_V02: NYSamples={NY_SAMPLES}")
+print(
+    f"EMW_METRIC_V02: SCRSlabArea_um2="
+    f"{SCR_SLAB_AREA_UM2:.12e}"
+)
+print(
+    f"EMW_METRIC_V02: G_SCR_slab_2D="
+    f"{G_SCR_SLAB_2D:.12e} "
+    f"[cm^-3 s^-1 um^2]"
+)
+print(
+    f"EMW_METRIC_V02: G_SCR_slab_average="
+    f"{G_SCR_SLAB_AVG:.12e} "
+    f"[cm^-3 s^-1]"
+)
+print(
+    f"EMW_METRIC_V02: G_SCR_equiv_rate_per_1um="
+    f"{G_SCR_EQ_RATE_PER_1UM:.12e} [s^-1]"
+)
+print(
+    f"EMW_METRIC_V02: Y_peak_lateral_integral_um="
+    f"{Y_PEAK_LINEINT_UM:.12e}"
+)
+print(
+    f"EMW_METRIC_V02: Y_peak_lateral_mean_um="
+    f"{Y_PEAK_LINEMEAN_UM:.12e}"
+)
+print(
+    f"EMW_METRIC_V02: Y_peak_integral_minus_SCRcenter_nm="
+    f"{(Y_PEAK_LINEINT_UM - Y_SCR_CENTER_UM)*1000.0:.12e}"
+)
+print(
+    f"EMW_METRIC_V02: Anchor_Gmean="
+    f"{anchor_stats['mean']:.12e}"
+)
+print(
+    f"EMW_METRIC_V02: Anchor_Gcv="
+    f"{anchor_stats['cv']:.12e}"
+)
+print(f"EMW_METRIC_V02: DEPTH_CSV={DEPTH_CSV}")
+print(f"EMW_METRIC_V02: ANCHOR_CSV={ANCHOR_CSV}")
+print(f"EMW_METRIC_V02: METRICS={METRICS_TXT}")
+print("EMW_METRIC_V02: STATUS=PASS")
