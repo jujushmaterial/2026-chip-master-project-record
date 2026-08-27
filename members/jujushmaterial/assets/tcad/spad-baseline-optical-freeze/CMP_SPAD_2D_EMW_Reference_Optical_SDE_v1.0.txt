@@ -1,0 +1,734 @@
+; =============================================================================
+; CMP FD-SOI SPAD reference baseline OPTICAL EXPORT v1.0 (2D EMW preparation)
+; Sentaurus Structure Editor T-2022.03
+;
+; DERIVED FROM:
+;   SDE_reference_baseline_v1.3_redarea_uniform_meshconv.txt
+;
+; PURPOSE:
+;   Preserve the frozen reference geometry and add only an optical Ambient
+;   padding region above the device for subsequent 2D EMW tensor-mesh/FDTD work.
+;
+; IMPORTANT:
+;   - Electrical baseline geometry/doping values are NOT recalibrated here.
+;   - Ambient is an [surrogate assumption] optical-simulation padding region,
+;     not a fabricated process layer.
+;   - The normal electrical right-half output is retained only for compatibility;
+;     it is NOT the input for EMW.
+;   - Use the final *_full_reference_optical_bnd.tdr as the geometry boundary
+;     for Sentaurus Mesh tensor-grid generation.
+;
+; One source file, two outputs:
+;   1) n@node@_msh.tdr
+;      - right-half compatibility output
+;      - UpperSi is temporarily inactive Oxide
+;      - NOT used for EMW
+;
+;   2) n@node@_full_reference_optical_msh.tdr
+;      - full planar cross-section after reflection
+;      - UpperSi is restored to physical Silicon
+;      - includes the added optical Ambient padding
+;
+;   Geometry boundary for the next EMW-preparation step:
+;      n@node@_full_reference_optical_bnd.tdr
+;
+; EMW must generate its own tensor optical mesh from the boundary file.
+; Geometry and mesh are proposed. Electrical calibration is not frozen.
+; Stage-1 provisional point: DNW_Dose=3.10e17, PW_Dose=5.95e17.
+; Mesh convergence: MeshScale=1.00 / 0.75 / 0.50.
+; RedArea is a mesh-only intermediate filled area; geometry/doping are unchanged.
+; All lengths are in um. Doping concentrations are in cm^-3.
+; =============================================================================
+
+(sde:clear)
+(sde:set-process-up-direction "+z")
+(sdegeo:set-default-boolean "ABA")
+
+; =============================================================================
+; 0. Parameters
+; =============================================================================
+
+; FD-SOI vertical stack
+(define t_uSi 0.007)
+(define t_BOX 0.025)
+(define t_STI 0.300)
+
+(define y_uSi_top  (- (+ t_STI t_BOX t_uSi)))
+(define y_BOX_top  (- (+ t_STI t_BOX)))
+(define y_surface  (- t_STI))
+(define y_interface 0.0)
+(define y_bottom   10.0)
+
+; Optical simulation padding above the physical device.
+; [surrogate assumption] Ambient thickness = 1.00 um.
+; This is not a fabricated device layer.
+(define t_Ambient 1.00)
+(define y_ambient_top (- y_uSi_top t_Ambient))
+
+; Right-half domain
+(define X_domain 24.0)
+(define X_active 12.5)
+
+; Central anode window
+(define x_anode_start 0.00)
+(define x_anode_end   0.55)
+
+; Native active-zone STI
+(define w_STI1 0.60)
+(define x_STI1 0.70)
+
+(define w_STI_active 0.30)
+(define x_STI2 (- 3.125 (* 0.5 w_STI_active)))
+(define x_STI3 (- 6.250 (* 0.5 w_STI_active)))
+(define x_STI4 (- 9.375 (* 0.5 w_STI_active)))
+
+; Peripheral STI5
+(define w_STI5  0.60)
+(define ov_STI5 0.30)
+(define x_STI5 (- X_active ov_STI5))
+(define x_STI5_end (+ x_STI5 w_STI5))
+
+; Cathode N-well pickup and DNW mask edge
+(define x_NW_start 14.20)
+(define w_NW        1.20)
+(define x_NW_end    (+ x_NW_start w_NW))
+(define x_DNW_edge  (+ x_NW_end 0.90))
+
+; Outer topology: STI6 - outer P-well pickup - STI7
+; Absolute outer dimensions are surrogate values.
+; Sweep guard_DNW_PW = 1.0 / 1.3 / 1.8 after the nominal run.
+(define guard_DNW_PW 1.30)
+(define w_STI6 0.60)
+(define w_STI7 0.60)
+(define w_SubPW 1.20)
+(define sub_contact_inset 0.20)
+
+(define x_SubPW_start (+ x_DNW_edge guard_DNW_PW))
+(define x_SubPW_end   (+ x_SubPW_start w_SubPW))
+
+(define x_STI6      (- x_SubPW_start w_STI6))
+(define x_STI6_end  (+ x_STI6 w_STI6))
+
+(define x_SubContact_start (+ x_SubPW_start sub_contact_inset))
+(define x_SubContact_end   (- x_SubPW_end sub_contact_inset))
+
+(define x_STI7     x_SubPW_end)
+(define x_STI7_end (+ x_STI7 w_STI7))
+
+; Analytic doping initial values
+; NOTE:
+;   @PW_Dose@ and @DNW_Dose@ are surrogate Gaussian PeakVal parameters [cm^-3]
+;   in this Stage-1 SDE model. They are NOT physical implant doses [cm^-2].
+(define PW_Rp     0.10)
+(define PW_dRp    0.20)
+(define PW_Npeak  @PW_Dose@)
+
+(define DNW_Rp    1.00)
+(define DNW_dRp   0.38)
+(define DNW_Npeak @DNW_Dose@)
+
+; Mesh convergence parameter.
+; Applied only to electrically important/local mesh rules.
+; The deep neutral-bulk Global mesh remains fixed.
+(define MeshScale @MeshScale@)
+
+(define (ms x)
+  (* MeshScale x))
+
+(define NW_Rp     0.30)
+(define NW_dRp    0.40)
+(define NW_Npeak  1e19)
+
+(define PP_Rp     0.02)
+(define PP_dRp    0.05)
+(define PP_Npeak  1e19)
+
+; =============================================================================
+; 1. Geometry helpers
+; =============================================================================
+
+(define (make-rect name material x0 y0 x1 y1)
+  (sdegeo:create-rectangle
+    (position x0 y0 0.0)
+    (position x1 y1 0.0)
+    material name))
+
+(define (make-sti name x0 width)
+  ; The trench oxide crosses UpperSi, BOX, and 0.300 um into bulk Silicon.
+  (make-rect name "Oxide" x0 y_uSi_top (+ x0 width) y_interface))
+
+(define (make-window name x0 y0 x1 y1)
+  (sdedr:define-refeval-window name "Rectangle"
+    (position x0 y0 0.0)
+    (position x1 y1 0.0)))
+
+(define (set-edge-contact x y contact-name)
+  (sdegeo:set-contact (find-edge-id (position x y 0.0)) contact-name))
+
+; =============================================================================
+; 2. Right-half physical topology
+; =============================================================================
+
+; -----------------------------------------------------------------------------
+; 2.0 Optical Ambient padding
+; -----------------------------------------------------------------------------
+; Create Ambient FIRST. With the existing ABA boolean convention, the
+; subsequently created Silicon/Oxide physical regions take precedence in their
+; overlap, leaving Ambient only in the open optical space above the device.
+;
+; [surrogate assumption]
+;   Ambient extends 1.00 um above the highest UpperSi/STI surface.
+;
+; This region exists only to provide a homogeneous medium for the EMW
+; plane-wave excitation and absorbing-boundary spacing.
+(define AmbientBody
+  (make-rect "R.Ambient" "Ambient"
+    0.0 y_ambient_top X_domain y_surface))
+
+; One connected p-type bulk Silicon body.
+(define BulkBody
+  (make-rect "Bulk" "Silicon" 0.0 y_surface X_domain y_bottom))
+
+; STI1-STI7. Oxide rises to y_uSi_top, so no void remains above STI.
+(define STI1Body (make-sti "R.STI1" x_STI1 w_STI1))
+(define STI2Body (make-sti "R.STI2" x_STI2 w_STI_active))
+(define STI3Body (make-sti "R.STI3" x_STI3 w_STI_active))
+(define STI4Body (make-sti "R.STI4" x_STI4 w_STI_active))
+(define STI5Body (make-sti "R.STI5" x_STI5 w_STI5))
+(define STI6Body (make-sti "R.STI6" x_STI6 w_STI6))
+(define STI7Body (make-sti "R.STI7" x_STI7 w_STI7))
+
+; BOX and 7 nm UpperSi exist on the native active ribs.
+; UpperSi is created as inactive Oxide for the first electrical output.
+(define BOX_Rib1
+  (make-rect "R.BOX.Rib1" "Oxide"
+    x_anode_end y_BOX_top x_STI1 y_surface))
+(define USI_Rib1
+  (make-rect "R.UpperSi.Rib1" "Oxide"
+    x_anode_end y_uSi_top x_STI1 y_BOX_top))
+
+(define BOX_Rib2
+  (make-rect "R.BOX.Rib2" "Oxide"
+    (+ x_STI1 w_STI1) y_BOX_top x_STI2 y_surface))
+(define USI_Rib2
+  (make-rect "R.UpperSi.Rib2" "Oxide"
+    (+ x_STI1 w_STI1) y_uSi_top x_STI2 y_BOX_top))
+
+(define BOX_Rib3
+  (make-rect "R.BOX.Rib3" "Oxide"
+    (+ x_STI2 w_STI_active) y_BOX_top x_STI3 y_surface))
+(define USI_Rib3
+  (make-rect "R.UpperSi.Rib3" "Oxide"
+    (+ x_STI2 w_STI_active) y_uSi_top x_STI3 y_BOX_top))
+
+(define BOX_Rib4
+  (make-rect "R.BOX.Rib4" "Oxide"
+    (+ x_STI3 w_STI_active) y_BOX_top x_STI4 y_surface))
+(define USI_Rib4
+  (make-rect "R.UpperSi.Rib4" "Oxide"
+    (+ x_STI3 w_STI_active) y_uSi_top x_STI4 y_BOX_top))
+
+(define BOX_Rib5
+  (make-rect "R.BOX.Rib5" "Oxide"
+    (+ x_STI4 w_STI_active) y_BOX_top x_STI5 y_surface))
+(define USI_Rib5
+  (make-rect "R.UpperSi.Rib5" "Oxide"
+    (+ x_STI4 w_STI_active) y_uSi_top x_STI5 y_BOX_top))
+
+(define UpperSiBodies
+  (list USI_Rib1 USI_Rib2 USI_Rib3 USI_Rib4 USI_Rib5))
+
+; =============================================================================
+; 3. Right-half contacts
+; =============================================================================
+
+(sdegeo:define-contact-set "anode"     4 (color:rgb 1 0 0) "##")
+(sdegeo:define-contact-set "cathode"   4 (color:rgb 0 0 1) "##")
+(sdegeo:define-contact-set "substrate" 4 (color:rgb 0 1 0) "##")
+
+; Split only the top edges that carry partial contacts.
+(sdegeo:insert-vertex (position x_anode_end y_surface 0.0))
+
+(sdegeo:insert-vertex (position x_NW_start y_surface 0.0))
+(sdegeo:insert-vertex (position x_NW_end   y_surface 0.0))
+
+(sdegeo:insert-vertex (position x_SubContact_start y_surface 0.0))
+(sdegeo:insert-vertex (position x_SubContact_end   y_surface 0.0))
+
+; The x=0 vertical axis is a symmetry boundary, not an electrode.
+(set-edge-contact (* 0.5 (+ x_anode_start x_anode_end))
+                  y_surface "anode")
+(set-edge-contact (* 0.5 (+ x_NW_start x_NW_end))
+                  y_surface "cathode")
+(set-edge-contact (* 0.5 (+ x_SubContact_start x_SubContact_end))
+                  y_surface "substrate")
+
+; =============================================================================
+; 4. Right-half analytic doping
+; =============================================================================
+
+; Background p-type substrate. It is restricted to Bulk.
+(sdedr:define-constant-profile
+  "Dop.Substrate" "BoronActiveConcentration" 1e15)
+(sdedr:define-constant-profile-region
+  "Place.Substrate" "Dop.Substrate" "Bulk")
+
+; Baselines run from small x to large x. Positive points into +y.
+(sdedr:define-refeval-window "BL.PW.Center" "Line"
+  (position (- X_active) y_surface 0.0)
+  (position X_active y_surface 0.0))
+
+(sdedr:define-refeval-window "BL.DNW" "Line"
+  (position (- x_DNW_edge) y_surface 0.0)
+  (position x_DNW_edge y_surface 0.0))
+
+(sdedr:define-refeval-window "BL.NW" "Line"
+  (position x_NW_start y_surface 0.0)
+  (position x_NW_end y_surface 0.0))
+
+(sdedr:define-refeval-window "BL.PP.Anode" "Line"
+  (position (- x_anode_end) y_surface 0.0)
+  (position x_anode_end y_surface 0.0))
+
+(sdedr:define-refeval-window "BL.PW.Sub" "Line"
+  (position x_SubPW_start y_surface 0.0)
+  (position x_SubPW_end y_surface 0.0))
+
+(sdedr:define-refeval-window "BL.PP.Sub" "Line"
+  (position x_SubContact_start y_surface 0.0)
+  (position x_SubContact_end y_surface 0.0))
+
+; P-well: central well and outer substrate pickup well.
+(sdedr:define-gaussian-profile "Imp.PW" "BoronActiveConcentration"
+  "PeakPos" PW_Rp "PeakVal" PW_Npeak "StdDev" PW_dRp
+  "Gauss" "Factor" 0.8)
+
+(sdedr:define-analytical-profile-placement
+  "Place.PW.Center" "Imp.PW" "BL.PW.Center"
+  "Positive" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+(sdedr:define-analytical-profile-placement
+  "Place.PW.Sub" "Imp.PW" "BL.PW.Sub"
+  "Positive" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+; Modified deep N-well.
+(sdedr:define-gaussian-profile "Imp.DNW" "PhosphorusActiveConcentration"
+  "PeakPos" DNW_Rp "PeakVal" DNW_Npeak "StdDev" DNW_dRp
+  "Gauss" "Factor" 0.8)
+
+(sdedr:define-analytical-profile-placement
+  "Place.DNW" "Imp.DNW" "BL.DNW"
+  "Positive" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+; N-well cathode pickup.
+(sdedr:define-gaussian-profile "Imp.NW" "PhosphorusActiveConcentration"
+  "PeakPos" NW_Rp "PeakVal" NW_Npeak "StdDev" NW_dRp
+  "Gauss" "Factor" 0.8)
+
+(sdedr:define-analytical-profile-placement
+  "Place.NW" "Imp.NW" "BL.NW"
+  "Positive" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+; P+ anode and frontside substrate pickup.
+(sdedr:define-gaussian-profile "Imp.PP" "BoronActiveConcentration"
+  "PeakPos" PP_Rp "PeakVal" PP_Npeak "StdDev" PP_dRp
+  "Gauss" "Factor" 0.8)
+
+(sdedr:define-analytical-profile-placement
+  "Place.PP.Anode" "Imp.PP" "BL.PP.Anode"
+  "Positive" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+(sdedr:define-analytical-profile-placement
+  "Place.PP.Sub" "Imp.PP" "BL.PP.Sub"
+  "Positive" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+; =============================================================================
+; 5. Spatial mesh hierarchy on the right half
+; =============================================================================
+
+; 5.1 Neutral substrate: intentionally coarse.
+; This controls the low-field pink region below the expected depletion zone.
+(make-window "RW.Global" 0.0 y_uSi_top X_domain y_bottom)
+(sdedr:define-refinement-size
+  "RD.Global" 3.00 1.50 0.80 0.40)
+(sdedr:define-refinement-placement
+  "PL.Global" "RD.Global" "RW.Global")
+
+; 5.2 Expected depletion envelope: medium mesh.
+; The polygon is deliberately conservative and must be checked at 15.8 V.
+(sdedr:define-refeval-window "RW.Depletion" "Polygon"
+  (list
+    (position 0.00 0.50 0.0)
+    (position 15.80 0.50 0.0)
+    (position 17.50 0.80 0.0)
+    (position 18.70 1.50 0.0)
+    (position 19.60 2.80 0.0)
+    (position 20.20 4.20 0.0)
+    (position 19.00 4.50 0.0)
+    (position 17.00 5.20 0.0)
+    (position 12.00 6.20 0.0)
+    (position 6.00  6.80 0.0)
+    (position 0.00  7.00 0.0)
+    (position 0.00  0.50 0.0)))
+
+(sdedr:define-refinement-size
+  "RD.Depletion"
+  (ms 0.80) (ms 0.30) (ms 0.15) (ms 0.06))
+(sdedr:define-refinement-placement
+  "PL.Depletion" "RD.Depletion" "RW.Depletion")
+
+; 5.3 Curved doping boundaries: adaptive mesh follows concentration contours.
+; Background Boron is 1e15, below Cmin, so the deep neutral bulk stays coarse.
+(make-window "RW.Profile" 0.0 y_surface 20.50 2.15)
+(sdedr:define-refinement-size
+  "RD.Profile"
+  (ms 0.80) (ms 0.30) (ms 0.04) (ms 0.02))
+
+(sdedr:define-refinement-function
+  "RD.Profile" "DopingConcentration" "MaxTransDiff" 1.5)
+
+(sdedr:define-refinement-function
+  "RD.Profile" "MaxInterval"
+  "Variable" "PhosphorusActiveConcentration"
+  "Cmin" 2e15 "Cmax" 5e16
+  "Scaling" 2 "TargetLength" (ms 0.08) "Rolloff")
+
+(sdedr:define-refinement-function
+  "RD.Profile" "MaxInterval"
+  "Variable" "BoronActiveConcentration"
+  "Cmin" 2e15 "Cmax" 2e17
+  "Scaling" 2 "TargetLength" (ms 0.08) "Rolloff")
+
+(sdedr:define-refinement-placement
+  "PL.Profile" "RD.Profile" "RW.Profile")
+
+; 5.4 Red-marked intermediate mesh AREA (Region 1.5).
+; IMPORTANT:
+; - This is the full INTERIOR of the user-marked red region, not only a strip
+;   around the lower red curve.
+; - The top boundary is nearly horizontal at y=2.15 um.
+; - The lower boundary is bowl-shaped and reaches y~4.05 um near x=0.
+; - RW.Profile now stops at y=2.15 um so this area is not partially overridden
+;   by the finer Profile mesh.
+; - Geometry, materials, contacts, and doping are unchanged.
+;
+; Right-half red-area polygon:
+;   top:    (0,2.15) -> (19.5,2.15)
+;   bottom: outer shallow -> center deep
+(sdedr:define-refeval-window "RW.RedArea" "Polygon"
+  (list
+    ; top edge: center -> outer
+    (position  0.00 2.15 0.0)
+    (position 19.50 2.15 0.0)
+
+    ; lower curved edge: outer -> center
+    (position 19.50 2.25 0.0)
+    (position 18.00 2.35 0.0)
+    (position 15.00 2.60 0.0)
+    (position 12.00 3.00 0.0)
+    (position  9.00 3.40 0.0)
+    (position  6.00 3.75 0.0)
+    (position  3.00 3.95 0.0)
+    (position  0.00 4.05 0.0)
+
+    (position  0.00 2.15 0.0)))
+
+; Slightly looser than the previous forced CurvedMid mesh, but still clearly
+; finer than RD.Depletion and much finer than RD.Global.
+;
+; MeshScale=1.00:
+;   RedArea  max = 0.30 / 0.12 um
+;            min = 0.08 / 0.04 um
+;
+; For convergence MeshScale=0.75 or 0.50 scales these lengths down together.
+(sdedr:define-refinement-size
+  "RD.RedArea"
+  (ms 0.30) (ms 0.12) (ms 0.08) (ms 0.04))
+(sdedr:define-refinement-placement
+  "PL.RedArea" "RD.RedArea" "RW.RedArea")
+
+; 5.5 Thin UpperSi/BOX stack: fixed vertical resolution only.
+; No broad interface-growth rule is used here.
+(make-window "RW.Stack"
+  x_anode_end y_uSi_top x_STI5 (+ y_surface 0.02))
+(sdedr:define-refinement-size
+  "RD.Stack"
+  (ms 0.50) (ms 0.010) (ms 0.10) (ms 0.005))
+(sdedr:define-refinement-placement
+  "PL.Stack" "RD.Stack" "RW.Stack")
+
+; 5.6 Central anode pickup.
+(make-window "RW.Anode"
+  0.0 (- y_surface 0.03) 0.80 0.30)
+(sdedr:define-refinement-size
+  "RD.Anode"
+  (ms 0.15) (ms 0.05) (ms 0.03) (ms 0.01))
+(sdedr:define-refinement-function
+  "RD.Anode" "DopingConcentration" "MaxTransDiff" 1.0)
+(sdedr:define-refinement-placement
+  "PL.Anode" "RD.Anode" "RW.Anode")
+
+; 5.7 Native STI1-STI4.
+(sdedr:define-refinement-size
+  "RD.STI14"
+  (ms 0.15) (ms 0.08) (ms 0.03) (ms 0.015))
+(sdedr:define-refinement-function
+  "RD.STI14" "MaxLenInt" "Silicon" "Oxide" (ms 0.015) 1.5)
+
+(make-window "RW.STI1"
+  (- x_STI1 0.10) (- y_uSi_top 0.02)
+  (+ x_STI1 w_STI1 0.10) 0.18)
+(make-window "RW.STI2"
+  (- x_STI2 0.10) (- y_uSi_top 0.02)
+  (+ x_STI2 w_STI_active 0.10) 0.18)
+(make-window "RW.STI3"
+  (- x_STI3 0.10) (- y_uSi_top 0.02)
+  (+ x_STI3 w_STI_active 0.10) 0.18)
+(make-window "RW.STI4"
+  (- x_STI4 0.10) (- y_uSi_top 0.02)
+  (+ x_STI4 w_STI_active 0.10) 0.18)
+
+(sdedr:define-refinement-placement
+  "PL.STI1" "RD.STI14" "RW.STI1")
+(sdedr:define-refinement-placement
+  "PL.STI2" "RD.STI14" "RW.STI2")
+(sdedr:define-refinement-placement
+  "PL.STI3" "RD.STI14" "RW.STI3")
+(sdedr:define-refinement-placement
+  "PL.STI4" "RD.STI14" "RW.STI4")
+
+; 5.8 STI5, PW/DNW edge, and cathode pickup.
+(make-window "RW.PEB"
+  (- x_STI5 0.60) (- y_uSi_top 0.03)
+  (+ x_NW_end 0.60) 1.80)
+(sdedr:define-refinement-size
+  "RD.PEB"
+  (ms 0.25) (ms 0.12) (ms 0.03) (ms 0.015))
+(sdedr:define-refinement-function
+  "RD.PEB" "DopingConcentration" "MaxTransDiff" 1.0)
+(sdedr:define-refinement-function
+  "RD.PEB" "MaxLenInt" "Silicon" "Oxide" (ms 0.010) 1.5)
+(sdedr:define-refinement-placement
+  "PL.PEB" "RD.PEB" "RW.PEB")
+
+; 5.9 STI6, outer P-well, substrate pickup, and STI7.
+(make-window "RW.Outer"
+  (- x_STI6 0.50) (- y_uSi_top 0.03)
+  (+ x_STI7_end 0.50) 2.30)
+(sdedr:define-refinement-size
+  "RD.Outer"
+  (ms 0.30) (ms 0.15) (ms 0.04) (ms 0.02))
+(sdedr:define-refinement-function
+  "RD.Outer" "DopingConcentration" "MaxTransDiff" 1.2)
+(sdedr:define-refinement-function
+  "RD.Outer" "MaxLenInt" "Silicon" "Oxide" (ms 0.020) 1.5)
+(sdedr:define-refinement-placement
+  "PL.Outer" "RD.Outer" "RW.Outer")
+
+; =============================================================================
+; 6. First output: right-half compatibility mesh (NOT used by EMW)
+; =============================================================================
+
+; UpperSi is still inactive Oxide here.
+; This output is retained so the optical-export derivative remains compatible
+; with the original SDE flow, but it must NOT be used as the EMW geometry.
+; The EMW geometry comes from the final full-reference optical boundary output.
+(sde:build-mesh "n@node@")
+
+; =============================================================================
+; 7. Restore physical UpperSi, then reflect geometry
+; =============================================================================
+
+; Preserve every UpperSi region name while changing only its material.
+(define (restore-upper-si body)
+  (sde:add-material body "Silicon" (generic:get body "region")))
+
+(for-each restore-upper-si UpperSiBodies)
+
+; Mirror only the physical bodies through x=0.
+; Central PW/DNW/P+ doping already spans -x to +x on one continuous baseline,
+; so no duplicate central left-side analytical placement is created.
+(define MirrorX0
+  (transform:reflection (position 0.0 0.0 0.0) (gvector 1.0 0.0 0.0)))
+
+(sdegeo:mirror-selected (get-body-list) MirrorX0 #t)
+
+; -----------------------------------------------------------------------------
+; 7.1 Explicit left-side analytic doping for separated outer implants
+; -----------------------------------------------------------------------------
+; Central PW/DNW/P+ profiles are continuous across x=0 and are not duplicated.
+; Only NW / outer PW / substrate P+ are added explicitly on the left.
+; Every left baseline is defined from smaller x to larger x, so "Positive"
+; still points into +y.
+
+(sdedr:define-refeval-window "BL.NW.Left" "Line"
+  (position (- x_NW_end) y_surface 0.0)
+  (position (- x_NW_start) y_surface 0.0))
+
+(sdedr:define-refeval-window "BL.PW.Sub.Left" "Line"
+  (position (- x_SubPW_end) y_surface 0.0)
+  (position (- x_SubPW_start) y_surface 0.0))
+
+(sdedr:define-refeval-window "BL.PP.Sub.Left" "Line"
+  (position (- x_SubContact_end) y_surface 0.0)
+  (position (- x_SubContact_start) y_surface 0.0))
+
+(sdedr:define-analytical-profile-placement
+  "Place.NW.Left" "Imp.NW" "BL.NW.Left"
+  "Positive" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+(sdedr:define-analytical-profile-placement
+  "Place.PW.Sub.Left" "Imp.PW" "BL.PW.Sub.Left"
+  "Positive" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+(sdedr:define-analytical-profile-placement
+  "Place.PP.Sub.Left" "Imp.PP" "BL.PP.Sub.Left"
+  "Positive" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+; -----------------------------------------------------------------------------
+; 7.2 Explicit left-side mesh windows
+; -----------------------------------------------------------------------------
+; Reuse the existing refinement definitions. Only their left placements are new.
+
+(make-window "RW.Global.Left"
+  (- X_domain) y_uSi_top 0.0 y_bottom)
+(sdedr:define-refinement-placement
+  "PL.Global.Left" "RD.Global" "RW.Global.Left")
+
+(sdedr:define-refeval-window "RW.Depletion.Left" "Polygon"
+  (list
+    (position   0.00 0.50 0.0)
+    (position -15.80 0.50 0.0)
+    (position -17.50 0.80 0.0)
+    (position -18.70 1.50 0.0)
+    (position -19.60 2.80 0.0)
+    (position -20.20 4.20 0.0)
+    (position -19.00 4.50 0.0)
+    (position -17.00 5.20 0.0)
+    (position -12.00 6.20 0.0)
+    (position  -6.00 6.80 0.0)
+    (position   0.00 7.00 0.0)
+    (position   0.00 0.50 0.0)))
+(sdedr:define-refinement-placement
+  "PL.Depletion.Left" "RD.Depletion" "RW.Depletion.Left")
+
+(make-window "RW.Profile.Left"
+  -20.50 y_surface 0.0 2.15)
+(sdedr:define-refinement-placement
+  "PL.Profile.Left" "RD.Profile" "RW.Profile.Left")
+
+; Mirrored full RedArea for full-reference inspection.
+(sdedr:define-refeval-window "RW.RedArea.Left" "Polygon"
+  (list
+    ; top edge: center -> outer-left
+    (position   0.00 2.15 0.0)
+    (position -19.50 2.15 0.0)
+
+    ; lower curved edge: outer-left -> center
+    (position -19.50 2.25 0.0)
+    (position -18.00 2.35 0.0)
+    (position -15.00 2.60 0.0)
+    (position -12.00 3.00 0.0)
+    (position  -9.00 3.40 0.0)
+    (position  -6.00 3.75 0.0)
+    (position  -3.00 3.95 0.0)
+    (position   0.00 4.05 0.0)
+
+    (position   0.00 2.15 0.0)))
+(sdedr:define-refinement-placement
+  "PL.RedArea.Left" "RD.RedArea" "RW.RedArea.Left")
+
+(make-window "RW.Stack.Left"
+  (- x_STI5) y_uSi_top (- x_anode_end) (+ y_surface 0.02))
+(sdedr:define-refinement-placement
+  "PL.Stack.Left" "RD.Stack" "RW.Stack.Left")
+
+(make-window "RW.Anode.Left"
+  -0.80 (- y_surface 0.03) 0.0 0.30)
+(sdedr:define-refinement-placement
+  "PL.Anode.Left" "RD.Anode" "RW.Anode.Left")
+
+(make-window "RW.STI1.Left"
+  (- (+ x_STI1 w_STI1 0.10)) (- y_uSi_top 0.02)
+  (+ (- x_STI1) 0.10) 0.18)
+(make-window "RW.STI2.Left"
+  (- (+ x_STI2 w_STI_active 0.10)) (- y_uSi_top 0.02)
+  (+ (- x_STI2) 0.10) 0.18)
+(make-window "RW.STI3.Left"
+  (- (+ x_STI3 w_STI_active 0.10)) (- y_uSi_top 0.02)
+  (+ (- x_STI3) 0.10) 0.18)
+(make-window "RW.STI4.Left"
+  (- (+ x_STI4 w_STI_active 0.10)) (- y_uSi_top 0.02)
+  (+ (- x_STI4) 0.10) 0.18)
+
+(sdedr:define-refinement-placement
+  "PL.STI1.Left" "RD.STI14" "RW.STI1.Left")
+(sdedr:define-refinement-placement
+  "PL.STI2.Left" "RD.STI14" "RW.STI2.Left")
+(sdedr:define-refinement-placement
+  "PL.STI3.Left" "RD.STI14" "RW.STI3.Left")
+(sdedr:define-refinement-placement
+  "PL.STI4.Left" "RD.STI14" "RW.STI4.Left")
+
+(make-window "RW.PEB.Left"
+  (- (+ x_NW_end 0.60)) (- y_uSi_top 0.03)
+  (+ (- x_STI5) 0.60) 1.80)
+(sdedr:define-refinement-placement
+  "PL.PEB.Left" "RD.PEB" "RW.PEB.Left")
+
+(make-window "RW.Outer.Left"
+  (- (+ x_STI7_end 0.50)) (- y_uSi_top 0.03)
+  (+ (- x_STI6) 0.50) 2.30)
+(sdedr:define-refinement-placement
+  "PL.Outer.Left" "RD.Outer" "RW.Outer.Left")
+
+; =============================================================================
+; 8. Explicit full-device contact check and assignment
+; =============================================================================
+
+; Reinsert the left split points so contact assignment is independent of
+; the inherited mirror attributes.
+(sdegeo:insert-vertex (position (- x_anode_end) y_surface 0.0))
+
+(sdegeo:insert-vertex (position (- x_NW_end)   y_surface 0.0))
+(sdegeo:insert-vertex (position (- x_NW_start) y_surface 0.0))
+
+(sdegeo:insert-vertex (position (- x_SubContact_end)   y_surface 0.0))
+(sdegeo:insert-vertex (position (- x_SubContact_start) y_surface 0.0))
+
+; Both anode halves form one terminal.
+(set-edge-contact (*  0.5 x_anode_end) y_surface "anode")
+(set-edge-contact (* -0.5 x_anode_end) y_surface "anode")
+
+; Left and right cathode pickups share one terminal.
+(set-edge-contact
+  (*  0.5 (+ x_NW_start x_NW_end)) y_surface "cathode")
+(set-edge-contact
+  (* -0.5 (+ x_NW_start x_NW_end)) y_surface "cathode")
+
+; Left and right frontside substrate pickups share one terminal.
+(set-edge-contact
+  (*  0.5 (+ x_SubContact_start x_SubContact_end))
+  y_surface "substrate")
+(set-edge-contact
+  (* -0.5 (+ x_SubContact_start x_SubContact_end))
+  y_surface "substrate")
+
+; =============================================================================
+; 9. Final output: full planar reference + optical Ambient
+; =============================================================================
+
+; This generates:
+;   n@node@_full_reference_optical_bnd.tdr
+;   n@node@_full_reference_optical_msh.tdr
+;
+; IMPORTANT:
+;   The *_bnd.tdr file is the geometry boundary input for the next
+;   Sentaurus Mesh tensor-product generation step.
+;   EMW must generate/use its own tensor mesh; this SDE mixed-element mesh is
+;   NOT the final FDTD mesh.
+(sde:build-mesh "n@node@_full_reference_optical")
+
+; =============================================================================
+; End
+; =============================================================================
