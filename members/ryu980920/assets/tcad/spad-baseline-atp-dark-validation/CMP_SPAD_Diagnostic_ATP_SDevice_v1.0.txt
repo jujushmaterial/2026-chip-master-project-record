@@ -1,0 +1,176 @@
+#setdep @node|sde@
+
+*=============================================================================
+* CMP SPAD diagnostic deck: ionization integrals + breakdown paths + ATP
+* Version 1.0, 2026-08-27
+*
+* Source merge
+*   - Workbench dependency, contacts, voltage landmarks, and file naming:
+*     teammate VBD diagnostic deck v1.1
+*   - Ionization-path controls: user deck B2
+*   - BreakdownProbability and ATP fields: user deck B3
+*   - Dark-generation model card: user decks B1/B3
+*
+* PHYSICS MODE: IMPACT-IONIZATION FEEDBACK OFF
+*   AvalPostProcessing excludes impact-ionization-generated carriers from the
+*   device continuity equations.  This makes it possible to continue beyond
+*   breakdown without current divergence and to obtain ATP above VBD.
+*
+* Deliberate integration decisions
+*   1. BreakAtIonIntegral is NOT used.  The ramp must continue to 20 V so that
+*      above-breakdown ATP snapshots exist.
+*   2. ElectricField is the avalanche driving force.  This is chosen for
+*      consistency with approximate breakdown-path integration.  The separate
+*      feedback-ON I-V deck uses Eparallel; therefore a VBD difference between
+*      the two decks contains a driving-force-model contribution as well as a
+*      numerical/definition contribution.
+*   3. The first run must verify that PhiElectron and PhiHole are present in
+*      the current plot file.  The supplied SVisualPy extracts VBD from their
+*      crossing of one.
+*=============================================================================
+
+File {
+  Grid        = "n@node|sde@_msh.tdr"
+  Current     = "@plot@"
+  Plot        = "@tdrdat@"
+  Output      = "@log@"
+  IonIntegral = "n@node@_ionpath.tdr"
+}
+
+Electrode {
+  { Name = "anode"     Voltage = 0.0 }
+  { Name = "cathode"   Voltage = 0.0 }
+  { Name = "substrate" Voltage = 0.0 }
+}
+
+Physics {
+  Temperature = 300.0
+  AreaFactor  = 1.0
+
+  Fermi
+  EffectiveIntrinsicDensity( OldSlotboom )
+
+  Mobility(
+    DopingDependence
+    HighFieldSaturation( GradQuasiFermi )
+    Enormal
+  )
+
+  Recombination(
+    SRH( DopingDependence TempDependence Tunneling( Hurkx ) )
+    Auger
+    Band2Band( Model = Hurkx )
+    Avalanche( vanOverstraeten ElectricField )
+  )
+
+  BreakdownProbability(
+    MinElectricField = 1.0e5
+    InterpolatedDiscretization
+  )
+}
+
+Plot {
+  Doping DonorConcentration AcceptorConcentration
+  eDensity hDensity SpaceCharge
+  ElectricField/Vector Potential
+  eQuasiFermi hQuasiFermi
+  eGradQuasiFermi/Vector hGradQuasiFermi/Vector
+  eCurrent/Vector hCurrent/Vector Current/Vector
+  eMobility hMobility
+
+  SRHRecombination Auger
+  eBand2bandGeneration hBand2bandGeneration Band2bandGeneration
+  eAvalancheGeneration hAvalancheGeneration AvalancheGeneration
+
+  eAlphaAvalanche hAlphaAvalanche
+  eIonIntegral hIonIntegral MeanIonIntegral
+  eBreakdownProbability hBreakdownProbability jBreakdownProbability
+
+  ConductionBandEnergy ValenceBandEnergy
+}
+
+* Integrated generation terms are diagnostic only in this feedback-OFF deck.
+* Use the separate feedback-ON deck for the physical multiplied reverse I-V.
+CurrentPlot {
+  Potential( (0.0 0.0) (4.69 0.0) (12.50 0.0) )
+  ElectricField/Vector(
+    (4.69 0.18) (4.69 0.26) (12.50 0.18) (12.50 0.26)
+  )
+  SRHRecombination( Integrate( Semiconductor ) )
+  Band2bandGeneration( Integrate( Semiconductor ) )
+  AvalancheGeneration( Integrate( Semiconductor ) )
+}
+
+Math {
+  Cylindrical
+  Extrapolate
+  Derivatives
+  RelErrControl
+  Digits             = 6
+  ErrRef( Electron ) = 1.0e4
+  ErrRef( Hole )     = 1.0e4
+  Iterations         = 100
+  Notdamped          = 100
+  Number_of_Threads  = 4
+  RhsMin             = 1.0e-15
+  ExitOnFailure
+
+  AvalPostProcessing
+
+  ComputeIonizationIntegrals(
+    MinElectricField      = 2.0e5
+    SaveEIonIntegralPaths = 1
+    SaveHIonIntegralPaths = 1
+    WriteAll
+  )
+}
+
+Solve {
+  Coupled( Iterations = 200 LineSearchDamping = 1.0e-4 ) { Poisson }
+  Coupled { Poisson Electron Hole }
+
+  Plot( FilePrefix = "n@node@_V000" )
+
+  * Fast approach to 14 V, still below the expected 15.8 V anchor.
+  Quasistationary(
+    InitialStep = 1.0e-3
+    MinStep     = 1.0e-8
+    MaxStep     = 2.0e-2
+    Increment   = 1.35
+    Decrement   = 2.0
+    Goal { Name = "cathode" Voltage = 14.0 }
+  ){
+    Coupled { Poisson Electron Hole }
+    CurrentPlot( Time = ( Range = (0 1) Intervals = 140 ) )
+  }
+
+  Plot( FilePrefix = "n@node@_V140" )
+
+  * No BreakAtIonIntegral: continue through VBD to collect ATP above VBD.
+  Quasistationary(
+    InitialStep = 1.0e-3
+    MinStep     = 1.0e-9
+    MaxStep     = 2.0e-3
+    Increment   = 1.25
+    Decrement   = 2.0
+    Goal { Name = "cathode" Voltage = 20.0 }
+  ){
+    Coupled { Poisson Electron Hole }
+    CurrentPlot( Time = ( Range = (0 1) Intervals = 500 ) )
+
+    Plot( FilePrefix = "n@node@_V150" When( Contact = "cathode" voltage = 15.0 ) )
+    Plot( FilePrefix = "n@node@_V154" When( Contact = "cathode" voltage = 15.4 ) )
+    Plot( FilePrefix = "n@node@_V156" When( Contact = "cathode" voltage = 15.6 ) )
+    Plot( FilePrefix = "n@node@_V158" When( Contact = "cathode" voltage = 15.8 ) )
+    Plot( FilePrefix = "n@node@_V160" When( Contact = "cathode" voltage = 16.0 ) )
+    Plot( FilePrefix = "n@node@_V162" When( Contact = "cathode" voltage = 16.2 ) )
+    Plot( FilePrefix = "n@node@_V164" When( Contact = "cathode" voltage = 16.4 ) )
+    Plot( FilePrefix = "n@node@_V166" When( Contact = "cathode" voltage = 16.6 ) )
+    Plot( FilePrefix = "n@node@_V170" When( Contact = "cathode" voltage = 17.0 ) )
+    Plot( FilePrefix = "n@node@_V174" When( Contact = "cathode" voltage = 17.4 ) )
+    Plot( FilePrefix = "n@node@_V180" When( Contact = "cathode" voltage = 18.0 ) )
+    Plot( FilePrefix = "n@node@_V186" When( Contact = "cathode" voltage = 18.6 ) )
+    Plot( FilePrefix = "n@node@_V192" When( Contact = "cathode" voltage = 19.2 ) )
+    Plot( FilePrefix = "n@node@_V200" When( Contact = "cathode" voltage = 20.0 ) )
+  }
+}
