@@ -1,0 +1,623 @@
+#setdep @node|-1@
+#setdep @node|sdevice@
+
+# CMP SPAD feedback-ON dark-current SVisualPy v1.1
+#
+# Direct upstream node (-1) is the feedback-ON dark-current SDevice.
+# @node|sdevice@ is intentionally used only as the diagnostic SDevice
+# reference because, in the present SWB graph, that token resolves to n5.
+#
+# Main sub-breakdown dark-current metrics use the diagnostic ionization-
+# integral VBD from n5. The legacy feedback-ON inverse-fit is retained only
+# as a diagnostic metric and is not required for Dark_OK.
+#
+# Absolute DCR is not claimed without trap/lifetime calibration.
+
+import os
+import fnmatch
+import numpy as np
+
+VIS_NODE = @node@
+SNODE = @node|-1@
+DIAG_NODE = @node|sdevice@
+
+Q_E = 1.602176634e-19
+INTEGRATE_TO_PER_S = 1.0e-12
+ACTIVE_AREA_UM2 = np.pi * 12.5 ** 2
+PRIM_VBI = 0.8
+
+DARK_IV_FILE = f"n{SNODE}_des.plt"
+DIAG_IV_FILE = f"n{DIAG_NODE}_des.plt"
+
+PREFIX = f"n{VIS_NODE}_dark_py"
+METRICS_FILE = f"{PREFIX}_metrics.txt"
+IV_CSV = f"{PREFIX}_reverse_IV_components.csv"
+
+np.set_printoptions(precision=8, suppress=False)
+print(f"SVISUALPY_DARK: DARK_IV_FILE={DARK_IV_FILE}")
+print(f"SVISUALPY_DARK: DIAG_IV_FILE={DIAG_IV_FILE}")
+
+
+def pickvar(dataset, patterns):
+    names = list(sv.list_variables(dataset=dataset))
+    for pat in patterns:
+        p = pat.lower()
+        for name in names:
+            if fnmatch.fnmatch(name.lower(), p):
+                return name
+    return None
+
+
+def get_data(dataset, varname):
+    return np.asarray(
+        sv.get_variable_data(varname=varname, dataset=dataset),
+        dtype=float
+    )
+
+
+def sort_unique_many(x, *ys):
+    x = np.asarray(x, dtype=float)
+    arrs = [np.asarray(y, dtype=float) for y in ys]
+
+    mask = np.isfinite(x)
+    for arr in arrs:
+        mask &= np.isfinite(arr)
+
+    x = x[mask]
+    arrs = [arr[mask] for arr in arrs]
+    order = np.argsort(x, kind="mergesort")
+    x = x[order]
+    arrs = [arr[order] for arr in arrs]
+
+    xu, inv = np.unique(x, return_inverse=True)
+    outputs = []
+    for arr in arrs:
+        sums = np.bincount(inv, weights=arr)
+        counts = np.bincount(inv)
+        outputs.append(sums / np.maximum(counts, 1))
+    return (xu, *outputs)
+
+
+def optional_on_grid(dataset, patterns, vraw, vgrid, absolute=True):
+    name = pickvar(dataset, patterns)
+    if name is None:
+        return None, np.full_like(vgrid, np.nan)
+
+    arr = get_data(dataset, name)
+    if absolute:
+        arr = np.abs(arr)
+    vx, ax = sort_unique_many(vraw, arr)
+    if vx.size < 2:
+        return name, np.full_like(vgrid, np.nan)
+    return name, np.interp(vgrid, vx, ax, left=np.nan, right=np.nan)
+
+
+def crossings(x, y, level):
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    output = []
+    for i in range(len(y) - 1):
+        a, b = y[i], y[i + 1]
+        if not (np.isfinite(a) and np.isfinite(b)) or a == b:
+            continue
+        if (a >= level) == (b >= level):
+            continue
+        t = (level - a) / (b - a)
+        output.append(x[i] + t * (x[i + 1] - x[i]))
+    return output
+
+
+def vbd_rule1(v, current, criterion):
+    values = crossings(v, np.abs(current), criterion)
+    return float(values[-1]) if values else np.nan
+
+
+def fit_primary(v, i_on, v_fit_max):
+    mask = (
+        np.isfinite(v) & np.isfinite(i_on) &
+        (v > 0.2) & (v <= v_fit_max) & (np.abs(i_on) > 0.0)
+    )
+    if np.count_nonzero(mask) < 5:
+        return None, np.nan
+
+    exponent, ln_a = np.polyfit(
+        np.log(v[mask] + PRIM_VBI),
+        np.log(np.abs(i_on[mask])),
+        1
+    )
+    primary = np.exp(ln_a) * (v + PRIM_VBI) ** exponent
+    return primary, float(exponent)
+
+
+def vbd_rule2(v, i_on, i_primary, lo=0.05, hi=0.40):
+    i_on = np.abs(i_on)
+    i_primary = np.abs(i_primary)
+    valid = (i_on > 0.0) & (i_primary > 0.0)
+    inv_m = np.full_like(i_on, np.nan)
+    inv_m[valid] = i_primary[valid] / i_on[valid]
+
+    selected = np.isfinite(inv_m) & (inv_m >= lo) & (inv_m <= hi)
+    if np.count_nonzero(selected) < 3:
+        return np.nan
+
+    slope, intercept = np.polyfit(v[selected], inv_m[selected], 1)
+    return float(-intercept / slope) if slope != 0.0 else np.nan
+
+
+def inverse_fit_point_count(i_on, i_primary, lo=0.05, hi=0.40):
+    i_on = np.abs(np.asarray(i_on, dtype=float))
+    i_primary = np.abs(np.asarray(i_primary, dtype=float))
+
+    valid = (
+        np.isfinite(i_on) &
+        np.isfinite(i_primary) &
+        (i_on > 0.0) &
+        (i_primary > 0.0)
+    )
+
+    inv_m = np.full_like(i_on, np.nan)
+    inv_m[valid] = i_primary[valid] / i_on[valid]
+
+    selected = np.isfinite(inv_m) & (inv_m >= lo) & (inv_m <= hi)
+    return int(np.count_nonzero(selected))
+
+
+def vbd_selfcontained(v, i_on, iterations=3):
+    v_fit = 8.0
+    vbd = np.nan
+    exponent = np.nan
+    primary = None
+
+    for _ in range(iterations):
+        primary, exponent = fit_primary(v, i_on, v_fit)
+        if primary is None:
+            return np.nan, exponent, v_fit, None
+        vbd = vbd_rule2(v, i_on, primary)
+        if not np.isfinite(vbd):
+            return vbd, exponent, v_fit, primary
+        v_fit = max(3.0, 0.5 * vbd)
+
+    primary, exponent = fit_primary(v, i_on, v_fit)
+    if primary is not None:
+        vbd = vbd_rule2(v, i_on, primary)
+    return vbd, exponent, v_fit, primary
+
+
+def vbd_from_phi(v, pe, ph):
+    v, pe, ph = sort_unique_many(v, pe, ph)
+    if v.size < 2:
+        return np.nan
+
+    g = np.minimum(pe, ph)
+    values = crossings(v, g, 1.0)
+    return float(values[0]) if values else np.nan
+
+
+def load_diagnostic_vbd():
+    if not os.path.isfile(DIAG_IV_FILE):
+        print(f"SVISUALPY_DARK: DIAG_IV_MISSING={DIAG_IV_FILE}")
+        return np.nan
+
+    sv.load_file(DIAG_IV_FILE, name="DIAGIV")
+
+    vdiag_name = pickvar(
+        "DIAGIV",
+        ["*cathode*OuterVoltage*", "*cathode*InnerVoltage*"]
+    )
+    pe_name = pickvar(
+        "DIAGIV",
+        ["PhiElectron", "*PhiElectron*"]
+    )
+    ph_name = pickvar(
+        "DIAGIV",
+        ["PhiHole", "*PhiHole*"]
+    )
+
+    if vdiag_name is None or pe_name is None or ph_name is None:
+        print("SVISUALPY_DARK: DIAGNOSTIC_VBD_VARIABLE_MISSING")
+        return np.nan
+
+    vdiag = np.abs(get_data("DIAGIV", vdiag_name))
+    pe = get_data("DIAGIV", pe_name)
+    ph = get_data("DIAGIV", ph_name)
+
+    return vbd_from_phi(vdiag, pe, ph)
+
+
+def interp_inside(x, y, target):
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    valid = np.isfinite(x) & np.isfinite(y)
+    x = x[valid]
+    y = y[valid]
+    if x.size < 2 or target < x.min() or target > x.max():
+        return np.nan
+    order = np.argsort(x, kind="mergesort")
+    return float(np.interp(target, x[order], y[order]))
+
+
+def emit(file_handle, name, value):
+    if value is None or not np.isfinite(value):
+        file_handle.write(f"{name} = NA\n")
+        print(f"DOE: {name} x")
+    else:
+        value = float(value)
+        file_handle.write(f"{name} = {value:.12g}\n")
+        print(f"DOE: {name} {value:.12g}")
+
+
+def write_metric(file_handle, name, value):
+    if value is None or not np.isfinite(value):
+        file_handle.write(f"{name} = NA\n")
+    else:
+        file_handle.write(f"{name} = {float(value):.12g}\n")
+
+
+def save_csv(filename, columns):
+    names = list(columns.keys())
+    arrays = [np.asarray(columns[name], dtype=float) for name in names]
+    if not arrays:
+        return
+    lengths = [len(arr) for arr in arrays]
+    if len(set(lengths)) != 1:
+        raise RuntimeError(f"CSV length mismatch in {filename}: {lengths}")
+    np.savetxt(
+        filename,
+        np.column_stack(arrays),
+        delimiter=",",
+        header=",".join(names),
+        comments="",
+        fmt="%.12e"
+    )
+
+
+def safe_plot(callable_obj, tag):
+    try:
+        return callable_obj()
+    except Exception as exc:
+        print(f"SVISUALPY_DARK: PLOT_WARNING[{tag}]: {exc}")
+        return None
+
+
+# ----------------------------------------------------------------------
+# 1. Load physical feedback-ON I-V and terminal currents
+# ----------------------------------------------------------------------
+
+sv.load_file(DARK_IV_FILE, name="DARKIV")
+
+vname = pickvar(
+    "DARKIV", ["*cathode*OuterVoltage*", "*cathode*InnerVoltage*"]
+)
+ianame = pickvar("DARKIV", ["*anode*TotalCurrent*"])
+icname = pickvar("DARKIV", ["*cathode*TotalCurrent*"])
+isname = pickvar("DARKIV", ["*substrate*TotalCurrent*"])
+
+if None in (vname, ianame, icname, isname):
+    raise RuntimeError("Required terminal I-V variables not found")
+
+vraw = np.abs(get_data("DARKIV", vname))
+iaraw = get_data("DARKIV", ianame)
+icraw = get_data("DARKIV", icname)
+israw = get_data("DARKIV", isname)
+
+v, ia_signed, ic_signed, is_signed = sort_unique_many(
+    vraw, iaraw, icraw, israw
+)
+ia = np.abs(ia_signed)
+ic = np.abs(ic_signed)
+isub = np.abs(is_signed)
+
+
+# ----------------------------------------------------------------------
+# 2. Integrated generation components
+# ----------------------------------------------------------------------
+
+srh_name, srh_raw = optional_on_grid(
+    "DARKIV",
+    ["*IntegrSemiconductor*srhRecombination*", "*srhRecombination*"],
+    vraw,
+    v
+)
+btbt_name, btbt_raw = optional_on_grid(
+    "DARKIV",
+    ["*IntegrSemiconductor*Band2BandGeneration*", "*Band2BandGeneration*"],
+    vraw,
+    v
+)
+aval_name, aval_raw = optional_on_grid(
+    "DARKIV",
+    [
+        "*IntegrSemiconductor*ImpactIonization*",
+        "*IntegrSemiconductor*AvalancheGeneration*",
+        "*ImpactIonization*"
+    ],
+    vraw,
+    v
+)
+
+srh_eq_a = Q_E * srh_raw * INTEGRATE_TO_PER_S
+btbt_eq_a = Q_E * btbt_raw * INTEGRATE_TO_PER_S
+aval_eq_a = Q_E * aval_raw * INTEGRATE_TO_PER_S
+
+
+# ----------------------------------------------------------------------
+# 3. Diagnostic VBD reference + sub-breakdown dark-current metrics
+#
+# Main metrics use the n5 ionization-integral VBD.
+# The old inverse-fit remains only as a diagnostic output.
+# ----------------------------------------------------------------------
+
+vbd_diag = load_diagnostic_vbd()
+
+vbd_fit, primary_exponent, primary_fit_max, i_primary = vbd_selfcontained(
+    v,
+    ia
+)
+
+if i_primary is None:
+    i_primary = np.full_like(v, np.nan)
+
+inverse_fit_points = inverse_fit_point_count(
+    ia,
+    i_primary
+)
+
+vbd_i1e9 = vbd_rule1(v, ia, 1.0e-9)
+vbd_i1e6 = vbd_rule1(v, ia, 1.0e-6)
+
+if np.isfinite(vbd_diag):
+    vbd_ref = float(vbd_diag)
+    vbd_ref_source = "diagnostic-ionization-integral"
+elif np.isfinite(vbd_fit):
+    vbd_ref = float(vbd_fit)
+    vbd_ref_source = "legacy-inverse-fit-fallback"
+else:
+    vbd_ref = np.nan
+    vbd_ref_source = "unavailable"
+
+multiplication = np.full_like(v, np.nan)
+valid_m = np.isfinite(i_primary) & (i_primary > 0.0) & (ia > 0.0)
+multiplication[valid_m] = ia[valid_m] / i_primary[valid_m]
+
+fit_ok = float(
+    np.isfinite(vbd_fit) and
+    np.isfinite(primary_exponent) and
+    inverse_fit_points >= 3 and
+    1.0 <= primary_exponent <= 1.6
+)
+
+diag_vbd_ok = float(np.isfinite(vbd_diag))
+
+v50 = 0.50 * vbd_ref if np.isfinite(vbd_ref) else np.nan
+v90 = 0.90 * vbd_ref if np.isfinite(vbd_ref) else np.nan
+
+i50 = interp_inside(v, ia, v50) if np.isfinite(v50) else np.nan
+i90 = interp_inside(v, ia, v90) if np.isfinite(v90) else np.nan
+i156 = interp_inside(v, ia, 15.6)
+
+m90 = (
+    interp_inside(v, multiplication, v90)
+    if np.isfinite(v90) and fit_ok > 0.5
+    else np.nan
+)
+
+i50_density = i50 / ACTIVE_AREA_UM2 if np.isfinite(i50) else np.nan
+i90_density = i90 / ACTIVE_AREA_UM2 if np.isfinite(i90) else np.nan
+i156_density = i156 / ACTIVE_AREA_UM2 if np.isfinite(i156) else np.nan
+
+srh90 = interp_inside(v, srh_eq_a, v90) if np.isfinite(v90) else np.nan
+btbt90 = interp_inside(v, btbt_eq_a, v90) if np.isfinite(v90) else np.nan
+aval90 = interp_inside(v, aval_eq_a, v90) if np.isfinite(v90) else np.nan
+
+valid_components90 = [
+    value for value in (srh90, btbt90, aval90)
+    if np.isfinite(value)
+]
+component_sum90 = (
+    float(np.sum(valid_components90))
+    if valid_components90
+    else np.nan
+)
+
+srh90_pct = (
+    100.0 * srh90 / component_sum90
+    if np.isfinite(srh90) and np.isfinite(component_sum90) and component_sum90 > 0.0
+    else np.nan
+)
+btbt90_pct = (
+    100.0 * btbt90 / component_sum90
+    if np.isfinite(btbt90) and np.isfinite(component_sum90) and component_sum90 > 0.0
+    else np.nan
+)
+aval90_pct = (
+    100.0 * aval90 / component_sum90
+    if np.isfinite(aval90) and np.isfinite(component_sum90) and component_sum90 > 0.0
+    else np.nan
+)
+
+kcl_abs = np.abs(ia_signed + ic_signed + is_signed)
+kcl_scale = np.maximum.reduce(
+    [
+        np.abs(ia_signed),
+        np.abs(ic_signed),
+        np.abs(is_signed),
+        np.full_like(v, 1.0e-30)
+    ]
+)
+kcl_rel_max = float(np.max(kcl_abs / kcl_scale))
+
+dark_ok = float(
+    np.isfinite(vbd_ref) and
+    np.isfinite(i50) and
+    np.isfinite(i90) and
+    np.isfinite(i156) and
+    np.isfinite(v50) and
+    np.isfinite(v90) and
+    np.max(v) >= v90 and
+    np.max(v) >= 15.6
+)
+
+
+# ----------------------------------------------------------------------
+# 4. Save processed data and create native SVisual plots
+# ----------------------------------------------------------------------
+
+columns = {
+    "ReverseBias_V": v,
+    "AbsAnodeCurrent_A": ia,
+    "AbsCathodeCurrent_A": ic,
+    "AbsSubstrateCurrent_A": isub,
+    "FittedPrimaryCurrent_A": i_primary,
+    "EstimatedMultiplication": multiplication,
+    "DiagnosticVBDReference_V": np.full_like(v, vbd_ref),
+}
+
+if srh_name is not None:
+    columns["GlobalSRH_TAT_EquivalentCurrent_A"] = srh_eq_a
+if btbt_name is not None:
+    columns["GlobalBTBT_EquivalentCurrent_A"] = btbt_eq_a
+if aval_name is not None:
+    columns["GlobalAvalanche_EquivalentCurrent_A"] = aval_eq_a
+
+save_csv(IV_CSV, columns)
+sv.load_file(IV_CSV, name="DARKPROC")
+
+
+def plot_dark_iv():
+    p = sv.create_plot(name="Plot_DarkReverseIV", xy=True)
+    sv.create_curve(
+        name="Curve_DarkAnode",
+        plot=p,
+        dataset="DARKPROC",
+        axisX="ReverseBias_V",
+        axisY="AbsAnodeCurrent_A"
+    )
+    sv.create_curve(
+        name="Curve_DarkPrimaryFit",
+        plot=p,
+        dataset="DARKPROC",
+        axisX="ReverseBias_V",
+        axisY="FittedPrimaryCurrent_A"
+    )
+    sv.set_plot_prop(
+        plot=p,
+        show_grid=True,
+        show_legend=True,
+        title="Feedback-ON SPAD Reverse I-V"
+    )
+    sv.set_axis_prop(plot=p, axis="x", title="Reverse Bias [V]")
+    sv.set_axis_prop(plot=p, axis="y", title="Current [A]", type="log")
+    return p
+
+
+safe_plot(plot_dark_iv, "DarkReverseIV")
+
+component_columns = [
+    name for name in (
+        "GlobalSRH_TAT_EquivalentCurrent_A",
+        "GlobalBTBT_EquivalentCurrent_A",
+        "GlobalAvalanche_EquivalentCurrent_A"
+    ) if name in columns
+]
+
+if component_columns:
+    def plot_components():
+        p = sv.create_plot(name="Plot_DarkComponents", xy=True)
+        for index, column in enumerate(component_columns):
+            sv.create_curve(
+                name=f"Curve_DarkComponent_{index}",
+                plot=p,
+                dataset="DARKPROC",
+                axisX="ReverseBias_V",
+                axisY=column
+            )
+        sv.set_plot_prop(
+            plot=p,
+            show_grid=True,
+            show_legend=True,
+            title="Global Dark-Generation Components"
+        )
+        sv.set_axis_prop(plot=p, axis="x", title="Reverse Bias [V]")
+        sv.set_axis_prop(
+            plot=p,
+            axis="y",
+            title="Equivalent Generation Current [A]",
+            type="log"
+        )
+        return p
+
+    safe_plot(plot_components, "DarkComponents")
+
+
+# ----------------------------------------------------------------------
+# 5. Detailed report and compact Workbench DOE values
+# ----------------------------------------------------------------------
+
+with open(METRICS_FILE, "w") as m:
+    m.write(f"feedback_on_iv_file = {DARK_IV_FILE}\n")
+    m.write(f"diagnostic_iv_file = {DIAG_IV_FILE}\n")
+    m.write("dark_current_terminal = anode\n")
+    m.write(f"active_area_um2 = {ACTIVE_AREA_UM2:.12g}\n")
+    m.write("generation_integral_to_per_s = 1e-12\n")
+    m.write(f"srh_dataset = {srh_name}\n")
+    m.write(f"btbt_dataset = {btbt_name}\n")
+    m.write(f"avalanche_dataset = {aval_name}\n")
+    m.write("VBD_fit_evidence_label = [reverse-fit-diagnostic-only]\n")
+    m.write("VBD_reference_evidence_label = [diagnostic-ionization-integral]\n")
+    m.write(f"VBD_reference_source = {vbd_ref_source}\n")
+    m.write("absolute_DCR_claim_allowed = 0\n")
+
+    write_metric(m, "ramp_max_bias_V", np.max(v))
+    write_metric(m, "VBD_diagnostic_ionization_V", vbd_diag)
+    write_metric(m, "VBD_reference_V", vbd_ref)
+    write_metric(m, "VBD_inverse_fit_V", vbd_fit)
+    write_metric(m, "VBD_criterion_1e-9A_V", vbd_i1e9)
+    write_metric(m, "VBD_criterion_1e-6A_V", vbd_i1e6)
+    write_metric(m, "inverse_fit_selected_point_count", inverse_fit_points)
+    write_metric(m, "primary_fit_exponent", primary_exponent)
+    write_metric(m, "primary_fit_max_bias_V", primary_fit_max)
+    write_metric(m, "KCL_relative_residual_max", kcl_rel_max)
+    write_metric(m, "last_saved_anode_current_A", ia[-1])
+
+    write_metric(m, "I_anode_at_0p5VBD_A", i50)
+    write_metric(m, "I_anode_at_0p9VBD_A", i90)
+    write_metric(m, "I_anode_at_15p6V_A", i156)
+    write_metric(m, "I_density_at_0p5VBD_A_per_um2", i50_density)
+    write_metric(m, "I_density_at_0p9VBD_A_per_um2", i90_density)
+    write_metric(m, "I_density_at_15p6V_A_per_um2", i156_density)
+    write_metric(m, "estimated_M_at_0p9VBD", m90)
+
+    write_metric(m, "global_SRH_TAT_eq_A_at_0p9VBD", srh90)
+    write_metric(m, "global_BTBT_eq_A_at_0p9VBD", btbt90)
+    write_metric(m, "global_avalanche_eq_A_at_0p9VBD", aval90)
+    write_metric(m, "global_SRH_TAT_percent_at_0p9VBD", srh90_pct)
+    write_metric(m, "global_BTBT_percent_at_0p9VBD", btbt90_pct)
+    write_metric(m, "global_avalanche_percent_at_0p9VBD", aval90_pct)
+
+    emit(m, "VBDfit_V", vbd_fit)
+    emit(m, "VBDref_V", vbd_ref)
+    emit(m, "VBDdiag_OK", diag_vbd_ok)
+    emit(
+        m,
+        "I50_pAum2",
+        i50_density * 1.0e12 if np.isfinite(i50_density) else np.nan
+    )
+    emit(
+        m,
+        "I90_pAum2",
+        i90_density * 1.0e12 if np.isfinite(i90_density) else np.nan
+    )
+    emit(
+        m,
+        "I156_pAum2",
+        i156_density * 1.0e12 if np.isfinite(i156_density) else np.nan
+    )
+    emit(m, "SRH90_pct", srh90_pct)
+    emit(m, "BTBT90_pct", btbt90_pct)
+    emit(m, "Aval90_pct", aval90_pct)
+    emit(m, "RampMax_V", np.max(v))
+    emit(m, "Fit_OK", fit_ok)
+    emit(m, "Dark_OK", dark_ok)
+
+safe_plot(lambda: sv.windows_style(style="grid"), "GridLayout")
+print("SVISUALPY_DARK: COMPLETE")
