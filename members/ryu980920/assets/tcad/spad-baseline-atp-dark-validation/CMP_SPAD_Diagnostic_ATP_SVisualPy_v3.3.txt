@@ -1,0 +1,1920 @@
+#setdep @node|-1@
+
+# CMP SPAD diagnostic + ATP SVisualPy v3.3
+#
+# Keeps the v3.1 VBD/SCR/field calculations and DOE names unchanged.
+# ATP fix for Sentaurus Visual T-2022.03:
+#   1) force all TDR fields to load when the Python wrapper supports alldata,
+#   2) create an explicit 2D ATP plot,
+#   3) create ATP cutlines from that plot,
+#   4) precheck one center cut before launching the radial map sweep,
+#   5) use exact-name data probes if list_variables returns no name.
+# The ATP map remains a sampled cylindrical r-z map from radial cutlines.
+
+import os
+import fnmatch
+import glob
+import re as regex
+import numpy as np
+
+VIS_NODE = @node@
+SNODE = @node|-1@
+
+CENTER_R = 4.6875
+EDGE_R = 12.50
+
+Y_SI_SURFACE = -0.300
+Y_GRATING_SI_INTERFACE = 0.0
+
+SCR_E = 1.0e5
+SCR_SEARCH_MAX_IF = 1.30
+PROFILE_DEPTH_MAX_IF = 1.70
+VT = 0.025852
+EVAL_BIAS = 15.6
+OPTICAL_ANCHOR_UM = 0.180
+ATP_TARGET_VEX = 1.0
+ATP_FALLBACK_BIAS = 17.0
+ATP_RADIAL_SAMPLES = 101
+
+IV_FILE = f"n{SNODE}_des.plt"
+TDR_FILE = f"n{SNODE}_V156_des.tdr"
+
+PREFIX = f"n{VIS_NODE}_stage1_py"
+METRICS_FILE = f"{PREFIX}_metrics.txt"
+IV_CSV = f"{PREFIX}_reverse_IV.csv"
+CENTER_CSV = f"{PREFIX}_center_profile.csv"
+PERIPH_CSV = f"{PREFIX}_peripheral_profile.csv"
+ATP_MAP_CSV = f"{PREFIX}_ATP_map.csv"
+ATP_CENTER_CSV = f"{PREFIX}_ATP_center_profile.csv"
+ATP_PERIPH_CSV = f"{PREFIX}_ATP_peripheral_profile.csv"
+
+np.set_printoptions(precision=8, suppress=False)
+
+print(f"SVISUALPY_STAGE1: IV_FILE={IV_FILE}")
+print(f"SVISUALPY_STAGE1: TDR_FILE={TDR_FILE}")
+print(f"SVISUALPY_STAGE1: ATP_TARGET_VEX={ATP_TARGET_VEX}")
+print(f"SVISUALPY_STAGE1: ATP_RADIAL_SAMPLES={ATP_RADIAL_SAMPLES}")
+
+
+def pickvar(dataset, patterns):
+    names = list(sv.list_variables(dataset=dataset))
+    for pat in patterns:
+        p = pat.lower()
+        for name in names:
+            if fnmatch.fnmatch(name.lower(), p):
+                return name
+    return None
+
+
+def get_data(dataset, varname):
+    return np.asarray(
+        sv.get_variable_data(varname=varname, dataset=dataset),
+        dtype=float
+    )
+
+
+def finite_xy(x, y):
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    m = np.isfinite(x) & np.isfinite(y)
+    return x[m], y[m]
+
+
+def sort_unique_many(x, *ys):
+    x = np.asarray(x, dtype=float)
+    arrs = [np.asarray(y, dtype=float) for y in ys]
+
+    m = np.isfinite(x)
+    for a in arrs:
+        m &= np.isfinite(a)
+
+    x = x[m]
+    arrs = [a[m] for a in arrs]
+
+    idx = np.argsort(x, kind="mergesort")
+    x = x[idx]
+    arrs = [a[idx] for a in arrs]
+
+    xu, inv = np.unique(x, return_inverse=True)
+    outs = []
+    for a in arrs:
+        sums = np.bincount(inv, weights=a)
+        counts = np.bincount(inv)
+        outs.append(sums / np.maximum(counts, 1))
+    return (xu, *outs)
+
+
+def sort_unique_with_optional(x, main, optional_arrays):
+    x = np.asarray(x, dtype=float)
+    main = np.asarray(main, dtype=float)
+
+    mask = np.isfinite(x) & np.isfinite(main)
+    x = x[mask]
+    main = main[mask]
+
+    opts = []
+    for arr in optional_arrays:
+        if arr is None:
+            opts.append(None)
+        else:
+            arr = np.asarray(arr, dtype=float)
+            opts.append(arr[mask])
+
+    order = np.argsort(x, kind="mergesort")
+    x = x[order]
+    main = main[order]
+    opts = [None if arr is None else arr[order] for arr in opts]
+
+    xu, inv = np.unique(x, return_inverse=True)
+
+    main_sum = np.bincount(inv, weights=main)
+    counts = np.bincount(inv)
+    main_u = main_sum / np.maximum(counts, 1)
+
+    opt_u = []
+    for arr in opts:
+        if arr is None:
+            opt_u.append(np.full_like(xu, np.nan, dtype=float))
+            continue
+
+        good = np.isfinite(arr)
+        sums = np.bincount(inv[good], weights=arr[good], minlength=len(xu))
+        cnts = np.bincount(inv[good], minlength=len(xu))
+        out = np.full(len(xu), np.nan, dtype=float)
+        valid = cnts > 0
+        out[valid] = sums[valid] / cnts[valid]
+        opt_u.append(out)
+
+    return (xu, main_u, *opt_u)
+
+
+def crossings(x, y, level, lo=-np.inf, hi=np.inf):
+    x, y = finite_xy(x, y)
+    if x.size < 2:
+        return np.array([], dtype=float)
+
+    idx = np.argsort(x, kind="mergesort")
+    x = x[idx]
+    y = y[idx]
+
+    x1 = x[:-1]
+    x2 = x[1:]
+    y1 = y[:-1]
+    y2 = y[1:]
+
+    m = (
+        (y2 != y1) &
+        ((y1 - level) * (y2 - level) <= 0.0)
+    )
+
+    if not np.any(m):
+        return np.array([], dtype=float)
+
+    t = (level - y1[m]) / (y2[m] - y1[m])
+    good_t = (t >= 0.0) & (t <= 1.0)
+
+    xc = x1[m][good_t] + t[good_t] * (x2[m][good_t] - x1[m][good_t])
+
+    return xc[(xc >= lo) & (xc <= hi)]
+
+
+def bracket_crossings(vals, x0):
+    vals = np.asarray(vals, dtype=float)
+    vals = np.sort(vals[np.isfinite(vals)])
+    lower = vals[vals <= x0]
+    upper = vals[vals > x0]
+    lo = float(lower[-1]) if lower.size else np.nan
+    hi = float(upper[0]) if upper.size else np.nan
+    return lo, hi
+
+
+def window_max(x, y, lo, hi, positive_only=False):
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+
+    m = np.isfinite(x) & np.isfinite(y) & (x >= lo) & (x <= hi)
+    if positive_only:
+        m &= (y > 0.0)
+
+    if not np.any(m):
+        return np.nan, np.nan
+
+    xx = x[m]
+    yy = y[m]
+    k = int(np.argmax(yy))
+    return float(yy[k]), float(xx[k])
+
+
+def vbd_from_phi(v, pe, ph):
+    v, pe, ph = sort_unique_many(v, pe, ph)
+    g = np.minimum(pe, ph)
+    c = crossings(v, g, 1.0)
+    return float(c[0]) if c.size else np.nan
+
+
+def field_mag(dataset):
+    scalar = pickvar(
+        dataset,
+        ["AbsElectricField", "Abs(ElectricField-V)", "ElectricField"]
+    )
+    if scalar is not None:
+        a = get_data(dataset, scalar)
+        if a.ndim == 1:
+            return np.abs(a)
+
+    exn = pickvar(
+        dataset,
+        ["ElectricField-X", "ElectricField/x", "*ElectricField*X*"]
+    )
+    eyn = pickvar(
+        dataset,
+        ["ElectricField-Y", "ElectricField/y", "*ElectricField*Y*"]
+    )
+    if exn is None or eyn is None:
+        raise RuntimeError("Electric-field variable not found")
+
+    ex = get_data(dataset, exn)
+    ey = get_data(dataset, eyn)
+    return np.sqrt(ex * ex + ey * ey)
+
+
+def qn_ratio_sorted(z_if, p, e):
+    z_if = np.asarray(z_if, dtype=float)
+    p = np.asarray(p, dtype=float)
+    e = np.asarray(e, dtype=float)
+
+    if z_if.size < 3:
+        return np.zeros_like(z_if)
+
+    z_cm = z_if * 1.0e-4
+    dpdz = np.gradient(p, z_cm, edge_order=1)
+    ratio = np.zeros_like(z_if)
+
+    good = (
+        np.isfinite(p) & np.isfinite(e) & np.isfinite(dpdz) &
+        (p > 0.0) & (e > 0.0) &
+        (np.abs(dpdz) > 0.0)
+    )
+    ratio[good] = np.abs(p[good] * e[good] / (VT * dpdz[good]))
+    return ratio
+
+
+def first_ge_after(x, y, x0, level, xhi):
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+
+    for i in range(1, len(x)):
+        if x[i] < x0:
+            continue
+        if x[i] > xhi:
+            break
+
+        if np.isfinite(y[i]) and y[i] >= level:
+            xp, yp = x[i - 1], y[i - 1]
+            if (
+                xp >= x0 and np.isfinite(yp) and
+                yp < level and y[i] != yp
+            ):
+                t = (level - yp) / (y[i] - yp)
+                return float(xp + t * (x[i] - xp))
+            return float(x[i])
+
+    return np.nan
+
+
+def emit(fh, name, value):
+    if value is None or not np.isfinite(value):
+        fh.write(f"{name} = NA\n")
+        print(f"DOE: {name} x")
+    else:
+        value = float(value)
+        fh.write(f"{name} = {value:.12g}\n")
+        print(f"DOE: {name} {value:.12g}")
+
+
+def write_metric(fh, name, value):
+    if value is None or not np.isfinite(value):
+        fh.write(f"{name} = NA\n")
+    else:
+        fh.write(f"{name} = {float(value):.12g}\n")
+
+
+def save_csv(filename, columns):
+    names = list(columns.keys())
+    arrays = [np.asarray(columns[name], dtype=float) for name in names]
+
+    if len(arrays) == 0:
+        return
+
+    n = len(arrays[0])
+    for a in arrays:
+        if len(a) != n:
+            raise RuntimeError(
+                f"CSV column length mismatch in {filename}: "
+                f"{[len(x) for x in arrays]}"
+            )
+
+    data = np.column_stack(arrays)
+    np.savetxt(
+        filename,
+        data,
+        delimiter=",",
+        header=",".join(names),
+        comments="",
+        fmt="%.12e"
+    )
+
+
+def safe_plot(callable_obj, tag):
+    try:
+        return callable_obj()
+    except Exception as exc:
+        print(f"SVISUALPY_STAGE1: PLOT_WARNING[{tag}]: {exc}")
+        return None
+
+
+def create_cut(direction, at, dataset, name):
+    try:
+        return sv.create_cutline(
+            direction,
+            at=at,
+            dataset=dataset,
+            materials=["Silicon"],
+            name=name
+        )
+    except TypeError:
+        return sv.create_cutline(
+            direction,
+            at=at,
+            dataset=dataset,
+            name=name
+        )
+
+
+def load_csv_plot_dataset(filename, name):
+    sv.load_file(filename, name=name)
+    return name
+
+
+def snapshot_bias(path):
+    name = os.path.basename(path)
+    match = regex.match(rf"n{SNODE}_V(\d{{3}})_des.tdr$", name)
+    if match is None:
+        return np.nan
+    return float(int(match.group(1))) / 10.0
+
+
+def choose_atp_snapshot(vbd_value):
+    paths = sorted(glob.glob(f"n{SNODE}_V???_des.tdr"))
+    candidates = []
+    for path in paths:
+        bias = snapshot_bias(path)
+        if np.isfinite(bias):
+            candidates.append((bias, path))
+
+    if not candidates:
+        return np.nan, None
+
+    candidates.sort(key=lambda item: item[0])
+
+    if np.isfinite(vbd_value):
+        target = float(vbd_value) + ATP_TARGET_VEX
+        eligible = [item for item in candidates if item[0] >= vbd_value]
+        if not eligible:
+            return np.nan, None
+        above_target = [item for item in eligible if item[0] >= target]
+        return above_target[0] if above_target else eligible[-1]
+
+    return min(candidates, key=lambda item: abs(item[0] - ATP_FALLBACK_BIAS))
+
+
+def interp_inside(x, y, x0):
+    x, y = sort_unique_many(x, y)
+    if x.size < 2 or x0 < x[0] or x0 > x[-1]:
+        return np.nan
+    return float(np.interp(x0, x, y))
+
+
+# ----------------------------------------------------------------------
+# 1. Reverse I-V and VBD
+# ----------------------------------------------------------------------
+
+sv.load_file(IV_FILE, name="IV")
+
+vname = pickvar("IV", ["*cathode*OuterVoltage*", "*cathode*InnerVoltage*"])
+iname = pickvar("IV", ["*anode*TotalCurrent*"])
+
+if vname is None or iname is None:
+    raise RuntimeError("I-V variables not found")
+
+vv_raw = np.abs(get_data("IV", vname))
+ii_raw = np.abs(get_data("IV", iname))
+
+pename = pickvar("IV", ["PhiElectron", "*PhiElectron*"])
+phname = pickvar("IV", ["PhiHole", "*PhiHole*"])
+
+vbd = np.nan
+iv_columns = {
+    "ReverseBias_V": vv_raw,
+    "AbsAnodeCurrent_A": ii_raw,
+}
+
+if pename is not None and phname is not None:
+    pe_raw = get_data("IV", pename)
+    ph_raw = get_data("IV", phname)
+    vbd = vbd_from_phi(vv_raw, pe_raw, ph_raw)
+
+    iv_columns["PhiElectron"] = pe_raw
+    iv_columns["PhiHole"] = ph_raw
+
+save_csv(IV_CSV, iv_columns)
+load_csv_plot_dataset(IV_CSV, "IVPROC")
+
+
+def plot_reverse_iv():
+    p = sv.create_plot(name="Plot_ReverseIV", xy=True)
+    sv.create_curve(
+        name="Curve_ReverseIV",
+        plot=p,
+        dataset="IVPROC",
+        axisX="ReverseBias_V",
+        axisY="AbsAnodeCurrent_A"
+    )
+    sv.set_plot_prop(
+        plot=p,
+        show_grid=True,
+        show_legend=True,
+        title="SPAD Reverse I-V"
+    )
+    sv.set_axis_prop(plot=p, axis="x", title="Reverse Bias [V]")
+    sv.set_axis_prop(
+        plot=p,
+        axis="y",
+        title="|I_anode| [A]",
+        type="log"
+    )
+    return p
+
+
+safe_plot(plot_reverse_iv, "ReverseIV")
+
+if "PhiElectron" in iv_columns and "PhiHole" in iv_columns:
+    def plot_phi():
+        p = sv.create_plot(name="Plot_Ionization", xy=True)
+        sv.create_curve(
+            name="Curve_PhiElectron",
+            plot=p,
+            dataset="IVPROC",
+            axisX="ReverseBias_V",
+            axisY="PhiElectron"
+        )
+        sv.create_curve(
+            name="Curve_PhiHole",
+            plot=p,
+            dataset="IVPROC",
+            axisX="ReverseBias_V",
+            axisY="PhiHole"
+        )
+        sv.set_plot_prop(
+            plot=p,
+            show_grid=True,
+            show_legend=True,
+            title="Ionization Integrals"
+        )
+        sv.set_axis_prop(plot=p, axis="x", title="Reverse Bias [V]")
+        sv.set_axis_prop(plot=p, axis="y", title="Ionization Integral")
+        return p
+
+    safe_plot(plot_phi, "Ionization")
+
+
+# ----------------------------------------------------------------------
+# 2. 15.6 V static state
+# ----------------------------------------------------------------------
+
+tdr_ok = os.path.isfile(TDR_FILE)
+
+if not tdr_ok:
+    with open(METRICS_FILE, "w") as m:
+        m.write(f"evaluation_bias_V = {EVAL_BIAS}\n")
+        m.write(f"evaluation_tdr = {TDR_FILE}\n")
+
+        write_metric(m, "V_BD", vbd)
+        write_metric(m, "V156_TDR_exists", 0.0)
+        write_metric(m, "SCR_valid_15p6", 0.0)
+        for name in [
+            "z_SCR_p_if_um",
+            "z_SCR_n_if_um",
+            "W_SCR_um",
+            "z_SCR_center_if_um",
+            "z_QN_n_end_if_um",
+            "Emax_center_Vpcm",
+            "Emax_periph_Vpcm",
+            "R_E",
+            "z_Avalanche_peak_if_um"
+        ]:
+            write_metric(m, name, np.nan)
+
+        emit(m, "VBD_V", vbd)
+        emit(m, "SCR_center_nm", np.nan)
+        emit(m, "SCR_width_nm", np.nan)
+        emit(m, "Aval_peak_nm", np.nan)
+        emit(m, "Ecenter_kVpcm", np.nan)
+        emit(m, "Eperiph_kVpcm", np.nan)
+        emit(m, "R_E", np.nan)
+        emit(m, "SCR_OK", 0.0)
+
+    print("SVISUALPY_STAGE1: V156_TDR_MISSING")
+    print("SVISUALPY_STAGE1: IV/VBD extraction completed; SCR extraction skipped.")
+
+else:
+    sv.load_file(TDR_FILE, name="STATE")
+
+    pstate = sv.create_plot(name="Plot_State", dataset="STATE")
+    safe_plot(
+        lambda: sv.set_plot_prop(
+            plot=pstate,
+            title="SPAD State at 15.6 V",
+            show_axes=True,
+            show_title=True
+        ),
+        "StateProperties"
+    )
+
+    center = create_cut("x", CENTER_R, "STATE", "CENTER")
+    edge = create_cut("x", EDGE_R, "STATE", "EDGE")
+
+    yname = pickvar(center, ["Y", "y"])
+    yedge_name = pickvar(edge, ["Y", "y"])
+    if yname is None or yedge_name is None:
+        raise RuntimeError("Cutline coordinate variable not found")
+
+    y_raw = get_data(center, yname)
+    ec_raw = field_mag(center)
+
+    dname = pickvar(center, ["Doping", "DopingConcentration", "NetDoping"])
+    if dname is not None:
+        nd_raw = get_data(center, dname)
+    else:
+        dn = pickvar(center, ["DonorConcentration", "*Donor*"])
+        an = pickvar(center, ["AcceptorConcentration", "*Acceptor*"])
+        if dn is None or an is None:
+            raise RuntimeError("Doping variables not found")
+        nd_raw = get_data(center, dn) - get_data(center, an)
+
+    hname = pickvar(center, ["hDensity", "*hDensity*"])
+    if hname is not None:
+        hp_raw = get_data(center, hname)
+    else:
+        hp_raw = np.zeros_like(y_raw)
+
+    agc_name = pickvar(
+        center,
+        [
+            "AvalancheGeneration",
+            "*AvalancheGeneration*",
+            "ImpactIonization",
+            "*ImpactIonization*"
+        ]
+    )
+    if agc_name is not None:
+        agc_raw = get_data(center, agc_name)
+    else:
+        agc_raw = np.zeros_like(y_raw)
+
+    z_if_raw = y_raw - Y_GRATING_SI_INTERFACE
+    z_surface_raw = y_raw - Y_SI_SURFACE
+
+    (
+        z_if,
+        z_surface,
+        ec,
+        nd,
+        hp,
+        agc
+    ) = sort_unique_many(
+        z_if_raw,
+        z_surface_raw,
+        ec_raw,
+        nd_raw,
+        hp_raw,
+        agc_raw
+    )
+
+    dmax = np.max(np.abs(nd)) if nd.size else 0.0
+    dnorm = nd / dmax if dmax > 0.0 else np.zeros_like(nd)
+
+    ye_raw = get_data(edge, yedge_name)
+    ee_raw = field_mag(edge)
+
+    age_name = pickvar(
+        edge,
+        [
+            "AvalancheGeneration",
+            "*AvalancheGeneration*",
+            "ImpactIonization",
+            "*ImpactIonization*"
+        ]
+    )
+    if age_name is not None:
+        age_raw = get_data(edge, age_name)
+    else:
+        age_raw = np.zeros_like(ye_raw)
+
+    ze_if_raw = ye_raw - Y_GRATING_SI_INTERFACE
+    ze_surface_raw = ye_raw - Y_SI_SURFACE
+
+    (
+        ze_if,
+        ze_surface,
+        ee,
+        age
+    ) = sort_unique_many(
+        ze_if_raw,
+        ze_surface_raw,
+        ee_raw,
+        age_raw
+    )
+
+    # ------------------------------------------------------------------
+    # 3. SCR extraction
+    # ------------------------------------------------------------------
+    jc = crossings(
+        z_if,
+        nd,
+        0.0,
+        lo=0.0,
+        hi=SCR_SEARCH_MAX_IF
+    )
+    zj_if = float(jc[0]) if jc.size else np.nan
+
+    scrc = crossings(
+        z_if,
+        ec,
+        SCR_E,
+        lo=0.0,
+        hi=SCR_SEARCH_MAX_IF
+    )
+
+    zsp_if = np.nan
+    zsn_if = np.nan
+
+    if np.isfinite(zj_if):
+        zsp_if, zsn_if = bracket_crossings(scrc, zj_if)
+    elif scrc.size >= 2:
+        zsp_if = float(scrc[0])
+        zsn_if = float(scrc[1])
+
+    wsc = (
+        zsn_if - zsp_if
+        if np.isfinite(zsp_if) and np.isfinite(zsn_if)
+        else np.nan
+    )
+
+    zsc_if = (
+        0.5 * (zsp_if + zsn_if)
+        if np.isfinite(zsp_if) and np.isfinite(zsn_if)
+        else np.nan
+    )
+
+    scr_valid = float(
+        np.isfinite(zsp_if) and
+        np.isfinite(zsn_if) and
+        np.isfinite(wsc) and
+        (wsc > 0.0) and
+        np.isfinite(zsc_if)
+    )
+
+    # ------------------------------------------------------------------
+    # 4. Field
+    # ------------------------------------------------------------------
+    emaxc, zmaxc_if = window_max(
+        z_if,
+        ec,
+        0.0,
+        SCR_SEARCH_MAX_IF
+    )
+    emaxe, zmaxe_if = window_max(
+        ze_if,
+        ee,
+        0.0,
+        SCR_SEARCH_MAX_IF
+    )
+
+    r_e = (
+        emaxe / emaxc
+        if np.isfinite(emaxc) and emaxc > 0.0 and np.isfinite(emaxe)
+        else np.nan
+    )
+
+    # ------------------------------------------------------------------
+    # 5. QN boundary
+    # ------------------------------------------------------------------
+    qnend_if = np.nan
+    qr = np.zeros_like(z_if)
+
+    if hname is not None and np.isfinite(zsn_if):
+        qr = qn_ratio_sorted(z_if, hp, ec)
+        qnend_if = first_ge_after(
+            z_if,
+            qr,
+            zsn_if,
+            0.5,
+            PROFILE_DEPTH_MAX_IF
+        )
+
+    # ------------------------------------------------------------------
+    # 6. Avalanche / ImpactIonization diagnostic
+    # ------------------------------------------------------------------
+    agcmax = np.nan
+    zagc_if = np.nan
+    agemax = np.nan
+    zage_if = np.nan
+
+    if agc_name is not None:
+        agcmax, zagc_if = window_max(
+            z_if,
+            agc,
+            0.0,
+            SCR_SEARCH_MAX_IF,
+            positive_only=True
+        )
+
+    if age_name is not None:
+        agemax, zage_if = window_max(
+            ze_if,
+            age,
+            0.0,
+            SCR_SEARCH_MAX_IF,
+            positive_only=True
+        )
+
+    # ------------------------------------------------------------------
+    # 7. Save NumPy-processed CSVs
+    # ------------------------------------------------------------------
+    center_columns = {
+        "RawY_um": z_if + Y_GRATING_SI_INTERFACE,
+        "DepthFromSiSurface_um": z_surface,
+        "DepthFromGratingSiInterface_um": z_if,
+        "EFieldMag_Vpcm": ec,
+        "NetDoping_cm3": nd,
+        "NetDopingNormalized": dnorm,
+    }
+
+    if hname is not None:
+        center_columns["hDensity_cm3"] = hp
+        center_columns["HoleDriftDiffRatio"] = qr
+
+    if agc_name is not None:
+        center_columns["AvalancheOrImpactIonization"] = agc
+
+    edge_columns = {
+        "RawY_um": ze_if + Y_GRATING_SI_INTERFACE,
+        "DepthFromSiSurface_um": ze_surface,
+        "DepthFromGratingSiInterface_um": ze_if,
+        "EFieldMag_Vpcm": ee,
+    }
+
+    if age_name is not None:
+        edge_columns["AvalancheOrImpactIonization"] = age
+
+    save_csv(CENTER_CSV, center_columns)
+    save_csv(PERIPH_CSV, edge_columns)
+
+    load_csv_plot_dataset(CENTER_CSV, "CENTERPROC")
+    load_csv_plot_dataset(PERIPH_CSV, "EDGEPROC")
+
+    # ------------------------------------------------------------------
+    # 8. Native SVisual plots from CSV datasets
+    # ------------------------------------------------------------------
+    def plot_field():
+        p = sv.create_plot(name="Plot_FieldProfiles", xy=True)
+
+        sv.create_curve(
+            name="Curve_ECenter",
+            plot=p,
+            dataset="CENTERPROC",
+            axisX="DepthFromGratingSiInterface_um",
+            axisY="EFieldMag_Vpcm"
+        )
+        sv.create_curve(
+            name="Curve_EPeriph",
+            plot=p,
+            dataset="EDGEPROC",
+            axisX="DepthFromGratingSiInterface_um",
+            axisY="EFieldMag_Vpcm"
+        )
+
+        sv.set_plot_prop(
+            plot=p,
+            show_grid=True,
+            show_legend=True,
+            title="Electric Field Profiles"
+        )
+        sv.set_axis_prop(
+            plot=p,
+            axis="x",
+            title="Depth from Grating/Si Interface [um]"
+        )
+        sv.set_axis_prop(
+            plot=p,
+            axis="y",
+            title="|E| [V/cm]"
+        )
+        return p
+
+    safe_plot(plot_field, "Field")
+
+    def plot_doping():
+        p = sv.create_plot(name="Plot_DopingProfile", xy=True)
+        sv.create_curve(
+            name="Curve_NetDopingNormalized",
+            plot=p,
+            dataset="CENTERPROC",
+            axisX="DepthFromGratingSiInterface_um",
+            axisY="NetDopingNormalized"
+        )
+        sv.set_plot_prop(
+            plot=p,
+            show_grid=True,
+            show_legend=True,
+            title="Normalized Net Doping"
+        )
+        sv.set_axis_prop(
+            plot=p,
+            axis="x",
+            title="Depth from Grating/Si Interface [um]"
+        )
+        sv.set_axis_prop(
+            plot=p,
+            axis="y",
+            title="Normalized Net Doping"
+        )
+        return p
+
+    safe_plot(plot_doping, "Doping")
+
+    if hname is not None:
+        def plot_qn():
+            p = sv.create_plot(name="Plot_HoleDriftDiffRatio", xy=True)
+            sv.create_curve(
+                name="Curve_HoleDriftDiffRatio",
+                plot=p,
+                dataset="CENTERPROC",
+                axisX="DepthFromGratingSiInterface_um",
+                axisY="HoleDriftDiffRatio"
+            )
+            sv.set_plot_prop(
+                plot=p,
+                show_grid=True,
+                show_legend=True,
+                title="Hole Drift/Diffusion Ratio"
+            )
+            sv.set_axis_prop(
+                plot=p,
+                axis="x",
+                title="Depth from Grating/Si Interface [um]"
+            )
+            sv.set_axis_prop(
+                plot=p,
+                axis="y",
+                title="v_drift/v_diff"
+            )
+            return p
+
+        safe_plot(plot_qn, "QNRatio")
+
+    # ------------------------------------------------------------------
+    # 9. Workbench DOE + detailed metrics
+    # ------------------------------------------------------------------
+    with open(METRICS_FILE, "w") as m:
+        m.write(f"evaluation_bias_V = {EVAL_BIAS}\n")
+        m.write(f"evaluation_tdr = {TDR_FILE}\n")
+        m.write(f"center_r_um = {CENTER_R}\n")
+        m.write(f"peripheral_r_um = {EDGE_R}\n")
+        m.write(f"si_surface_raw_y_um = {Y_SI_SURFACE}\n")
+        m.write(
+            f"grating_si_interface_raw_y_um = "
+            f"{Y_GRATING_SI_INTERFACE}\n"
+        )
+        m.write(f"optical_anchor_um = {OPTICAL_ANCHOR_UM}\n")
+        m.write(f"center_avalanche_variable = {agc_name}\n")
+        m.write(f"periph_avalanche_variable = {age_name}\n")
+
+        write_metric(m, "V_BD", vbd)
+        write_metric(m, "V156_TDR_exists", 1.0)
+        write_metric(m, "SCR_valid_15p6", scr_valid)
+
+        write_metric(m, "z_SCR_p_if_um", zsp_if)
+        write_metric(m, "z_SCR_n_if_um", zsn_if)
+        write_metric(m, "W_SCR_um", wsc)
+        write_metric(m, "z_SCR_center_if_um", zsc_if)
+        write_metric(m, "z_QN_n_end_if_um", qnend_if)
+
+        write_metric(m, "Emax_center_Vpcm", emaxc)
+        write_metric(m, "Emax_periph_Vpcm", emaxe)
+        write_metric(m, "R_E", r_e)
+
+        write_metric(m, "z_Avalanche_peak_if_um", zagc_if)
+
+        emit(m, "VBD_V", vbd)
+        emit(
+            m,
+            "SCR_center_nm",
+            zsc_if * 1000.0 if np.isfinite(zsc_if) else np.nan
+        )
+        emit(
+            m,
+            "SCR_width_nm",
+            wsc * 1000.0 if np.isfinite(wsc) else np.nan
+        )
+        emit(
+            m,
+            "Aval_peak_nm",
+            zagc_if * 1000.0 if np.isfinite(zagc_if) else np.nan
+        )
+        emit(
+            m,
+            "Ecenter_kVpcm",
+            emaxc / 1000.0 if np.isfinite(emaxc) else np.nan
+        )
+        emit(
+            m,
+            "Eperiph_kVpcm",
+            emaxe / 1000.0 if np.isfinite(emaxe) else np.nan
+        )
+        emit(m, "R_E", r_e)
+        emit(m, "SCR_OK", scr_valid)
+
+        write_metric(m, "z_junction_if_um", zj_if)
+        write_metric(m, "z_Emax_center_if_um", zmaxc_if)
+        write_metric(m, "z_Emax_periph_if_um", zmaxe_if)
+
+        write_metric(m, "AvalancheMax_center", agcmax)
+        write_metric(m, "AvalancheMax_periph", agemax)
+        write_metric(m, "z_AvalancheMax_center_if_um", zagc_if)
+        write_metric(m, "z_AvalancheMax_periph_if_um", zage_if)
+
+        write_metric(
+            m,
+            "SCR_p_minus_180nm_DIAG_nm",
+            (zsp_if - OPTICAL_ANCHOR_UM) * 1000.0
+            if np.isfinite(zsp_if) else np.nan
+        )
+        write_metric(
+            m,
+            "SCR_center_minus_180nm_DIAG_nm",
+            (zsc_if - OPTICAL_ANCHOR_UM) * 1000.0
+            if np.isfinite(zsc_if) else np.nan
+        )
+        write_metric(
+            m,
+            "SCR_n_minus_180nm_DIAG_nm",
+            (zsn_if - OPTICAL_ANCHOR_UM) * 1000.0
+            if np.isfinite(zsn_if) else np.nan
+        )
+        write_metric(
+            m,
+            "AvalanchePeak_minus_180nm_DIAG_nm",
+            (zagc_if - OPTICAL_ANCHOR_UM) * 1000.0
+            if np.isfinite(zagc_if) else np.nan
+        )
+
+    safe_plot(
+        lambda: sv.windows_style(style="grid"),
+        "GridLayout"
+    )
+
+
+# ----------------------------------------------------------------------
+# 10. ATP extraction from the diagnostic deck
+#
+# T-2022.03 workflow:
+#   - force all ATP TDR fields to load when the Python wrapper supports it,
+#   - create an explicit 2D ATP plot,
+#   - create 1D cutlines from that plot,
+#   - reconstruct a sampled cylindrical r-z ATP map.
+#
+# Research-facing ATP DOE definitions:
+#   ATP_axis180   = jBreakdownProbability at r=0, z=180 nm
+#   ATP_peak180   = radial maximum of jBreakdownProbability at z=180 nm
+#   ATP_peak      = global maximum over the sampled (r,z) ATP map
+#   ATP_peak_r_um = radial position of ATP_peak
+#   ATP_peak_z_nm = depth position of ATP_peak from the grating/Si interface
+#
+# Legacy r=4.6875 um and r=12.5 um profiles are still exported as
+# diagnostic CSVs, but they are no longer used as the main ATP DOE metrics.
+#
+# ATP_MAP_CSV is a sampled cylindrical r-z map, not an original TDR-node dump.
+# A center precheck must succeed before the 101-cut radial reconstruction runs.
+# ----------------------------------------------------------------------
+
+atp_bias, atp_file = choose_atp_snapshot(vbd)
+atp_vex = (
+    atp_bias - vbd
+    if np.isfinite(atp_bias) and np.isfinite(vbd)
+    else np.nan
+)
+
+# Research-facing ATP metrics
+atp_axis180 = np.nan
+atp_peak180 = np.nan
+atp_peak180_r_um = np.nan
+atp_peak = np.nan
+atp_peak_r_um = np.nan
+atp_peak_z_nm = np.nan
+
+# Legacy diagnostic profile metrics
+atp_center_180 = np.nan
+atp_periph_180 = np.nan
+atp_center_max = np.nan
+atp_periph_max = np.nan
+
+atp_map_nodes = np.nan
+atp_map_success = 0
+atp_precheck_ok = 0.0
+atp_alldata_ok = 0.0
+atp_ok = 0.0
+
+atp_joint_name = None
+atp_e_name = None
+atp_h_name = None
+atp_plot = None
+
+
+def load_tdr_all_data(filename, dataset_name):
+    global atp_alldata_ok
+
+    try:
+        loaded = sv.load_file(
+            filename,
+            name=dataset_name,
+            alldata=True
+        )
+        atp_alldata_ok = 1.0
+        print(
+            "SVISUALPY_STAGE1: ATP_LOAD_ALLDATA_OK "
+            f"dataset={loaded}"
+        )
+        return loaded
+
+    except TypeError as exc:
+        print(
+            "SVISUALPY_STAGE1: ATP_LOAD_ALLDATA_KEYWORD_UNSUPPORTED "
+            f"{exc}"
+        )
+        loaded = sv.load_file(
+            filename,
+            name=dataset_name
+        )
+        atp_alldata_ok = 0.0
+        return loaded
+
+
+def create_atp_cut(source_plot, radius, name):
+    try:
+        return sv.create_cutline(
+            "x",
+            at=radius,
+            plot=source_plot,
+            name=name
+        )
+
+    except TypeError:
+        return sv.create_cutline(
+            type="x",
+            at=radius,
+            plot=source_plot,
+            name=name
+        )
+
+
+def safe_list_variables(dataset):
+    try:
+        return list(
+            sv.list_variables(
+                dataset=dataset
+            )
+        )
+    except Exception as exc:
+        print(
+            "SVISUALPY_STAGE1: ATP_LIST_VARIABLES_WARNING "
+            f"dataset={dataset}: {exc}"
+        )
+        return []
+
+
+def probe_exact_variable(dataset, candidates):
+    names = safe_list_variables(dataset)
+
+    for candidate in candidates:
+        for name in names:
+            if name.lower() == candidate.lower():
+                return name
+
+    for candidate in candidates:
+        try:
+            arr = get_data(
+                dataset,
+                candidate
+            )
+            if arr.size > 0:
+                return candidate
+        except Exception:
+            pass
+
+    return None
+
+
+def pick_cut_variable(dataset, patterns, exact_candidates):
+    names = safe_list_variables(dataset)
+
+    for pat in patterns:
+        p = pat.lower()
+        for name in names:
+            if fnmatch.fnmatch(
+                name.lower(),
+                p
+            ):
+                return name
+
+    return probe_exact_variable(
+        dataset,
+        exact_candidates
+    )
+
+
+def read_atp_cut(source_plot, radius, name, verbose=False):
+    try:
+        cut = create_atp_cut(
+            source_plot,
+            radius,
+            name
+        )
+    except Exception as exc:
+        if verbose:
+            print(
+                "SVISUALPY_STAGE1: ATP_CUT_FAIL "
+                f"r={radius:.6g}: {exc}"
+            )
+        return None
+
+    names = safe_list_variables(cut)
+
+    if verbose:
+        print(
+            "SVISUALPY_STAGE1: ATP_CUT_DATASET "
+            f"r={radius:.6g} dataset={cut}"
+        )
+        print(
+            "SVISUALPY_STAGE1: ATP_CUT_VARIABLES "
+            f"r={radius:.6g} names={names}"
+        )
+
+    y_name = pick_cut_variable(
+        cut,
+        ["Y", "y", "*Y*"],
+        ["Y", "y"]
+    )
+
+    j_name = pick_cut_variable(
+        cut,
+        [
+            "jBreakdownProbability",
+            "*jBreakdownProbability*",
+            "*Joint*BreakdownProbability*"
+        ],
+        [
+            "jBreakdownProbability",
+            "JBreakdownProbability"
+        ]
+    )
+
+    e_name = pick_cut_variable(
+        cut,
+        [
+            "eBreakdownProbability",
+            "*eBreakdownProbability*"
+        ],
+        [
+            "eBreakdownProbability",
+            "EBreakdownProbability"
+        ]
+    )
+
+    h_name = pick_cut_variable(
+        cut,
+        [
+            "hBreakdownProbability",
+            "*hBreakdownProbability*"
+        ],
+        [
+            "hBreakdownProbability",
+            "HBreakdownProbability"
+        ]
+    )
+
+    if y_name is None or j_name is None:
+        if verbose:
+            print(
+                "SVISUALPY_STAGE1: ATP_CUT_VARIABLE_MISSING "
+                f"r={radius:.6g} "
+                f"Y={y_name} J={j_name} "
+                f"E={e_name} H={h_name}"
+            )
+        return None
+
+    try:
+        y_raw = get_data(
+            cut,
+            y_name
+        )
+        pj_raw = get_data(
+            cut,
+            j_name
+        )
+    except Exception as exc:
+        if verbose:
+            print(
+                "SVISUALPY_STAGE1: ATP_CUT_DATA_READ_FAIL "
+                f"r={radius:.6g}: {exc}"
+            )
+        return None
+
+    if len(y_raw) != len(pj_raw):
+        if verbose:
+            print(
+                "SVISUALPY_STAGE1: ATP_CUT_LENGTH_MISMATCH "
+                f"r={radius:.6g} "
+                f"Y={len(y_raw)} J={len(pj_raw)}"
+            )
+        return None
+
+    z_raw = (
+        y_raw -
+        Y_GRATING_SI_INTERFACE
+    )
+
+    pe_raw = None
+    ph_raw = None
+
+    if e_name is not None:
+        try:
+            candidate = get_data(
+                cut,
+                e_name
+            )
+            if len(candidate) == len(y_raw):
+                pe_raw = candidate
+        except Exception:
+            pe_raw = None
+
+    if h_name is not None:
+        try:
+            candidate = get_data(
+                cut,
+                h_name
+            )
+            if len(candidate) == len(y_raw):
+                ph_raw = candidate
+        except Exception:
+            ph_raw = None
+
+    z, pj, pe, ph = sort_unique_with_optional(
+        z_raw,
+        pj_raw,
+        [pe_raw, ph_raw]
+    )
+
+    finite = (
+        np.isfinite(z) &
+        np.isfinite(pj)
+    )
+
+    if not np.any(finite):
+        if verbose:
+            print(
+                "SVISUALPY_STAGE1: ATP_CUT_NO_FINITE_J "
+                f"r={radius:.6g}"
+            )
+        return None
+
+    z = z[finite]
+    pj = pj[finite]
+    pe = pe[finite]
+    ph = ph[finite]
+
+    return {
+        "cut": cut,
+        "joint_name": j_name,
+        "electron_name": e_name,
+        "hole_name": h_name,
+        "z": z,
+        "pj": pj,
+        "pe": pe,
+        "ph": ph,
+    }
+
+
+if atp_file is None or not os.path.isfile(atp_file):
+    print(
+        "SVISUALPY_STAGE1: "
+        "ATP_TDR_MISSING"
+    )
+
+else:
+    print(
+        f"SVISUALPY_STAGE1: ATP_FILE={atp_file}, "
+        f"BIAS={atp_bias:.6g}, "
+        f"VEX={atp_vex}"
+    )
+
+    load_tdr_all_data(
+        atp_file,
+        "ATPSTATE"
+    )
+
+    try:
+        atp_plot = sv.create_plot(
+            name="Plot_ATPState",
+            dataset="ATPSTATE"
+        )
+        print(
+            "SVISUALPY_STAGE1: "
+            f"ATP_2D_PLOT={atp_plot}"
+        )
+    except Exception as exc:
+        print(
+            "SVISUALPY_STAGE1: ATP_2D_PLOT_FAIL "
+            f"{exc}"
+        )
+        atp_plot = None
+
+    # --------------------------------------------------------------
+    # 10A. Mandatory diagnostic precheck at legacy CENTER_R
+    # --------------------------------------------------------------
+
+    center_atp = None
+
+    if atp_plot is not None:
+        center_atp = read_atp_cut(
+            atp_plot,
+            CENTER_R,
+            "ATP_CENTER_PRECHECK",
+            verbose=True
+        )
+
+    if center_atp is None:
+        print(
+            "SVISUALPY_STAGE1: ATP_PRECHECK_FAIL "
+            "radial_map_skipped"
+        )
+
+    else:
+        atp_precheck_ok = 1.0
+
+        atp_joint_name = (
+            center_atp["joint_name"]
+        )
+        atp_e_name = (
+            center_atp["electron_name"]
+        )
+        atp_h_name = (
+            center_atp["hole_name"]
+        )
+
+        print(
+            "SVISUALPY_STAGE1: ATP_PRECHECK_OK "
+            f"J={atp_joint_name} "
+            f"E={atp_e_name} "
+            f"H={atp_h_name}"
+        )
+
+        zc_atp = center_atp["z"]
+        pjc = center_atp["pj"]
+
+        atp_center_180 = interp_inside(
+            zc_atp,
+            pjc,
+            OPTICAL_ANCHOR_UM
+        )
+
+        atp_center_max, _ = window_max(
+            zc_atp,
+            pjc,
+            0.0,
+            SCR_SEARCH_MAX_IF
+        )
+
+        save_csv(
+            ATP_CENTER_CSV,
+            {
+                "DepthFromGratingSiInterface_um": zc_atp,
+                "jBreakdownProbability": pjc,
+            }
+        )
+
+        # ----------------------------------------------------------
+        # 10B. Legacy peripheral diagnostic profile
+        # ----------------------------------------------------------
+
+        edge_atp = read_atp_cut(
+            atp_plot,
+            EDGE_R,
+            "ATP_EDGE",
+            verbose=True
+        )
+
+        if edge_atp is None:
+            print(
+                "SVISUALPY_STAGE1: "
+                "ATP_PERIPHERAL_CUT_FAIL"
+            )
+        else:
+            ze_atp = edge_atp["z"]
+            pje = edge_atp["pj"]
+
+            atp_periph_180 = interp_inside(
+                ze_atp,
+                pje,
+                OPTICAL_ANCHOR_UM
+            )
+
+            atp_periph_max, _ = window_max(
+                ze_atp,
+                pje,
+                0.0,
+                SCR_SEARCH_MAX_IF
+            )
+
+            save_csv(
+                ATP_PERIPH_CSV,
+                {
+                    "DepthFromGratingSiInterface_um": ze_atp,
+                    "jBreakdownProbability": pje,
+                }
+            )
+
+            load_csv_plot_dataset(
+                ATP_CENTER_CSV,
+                "ATPCENTERPROC"
+            )
+
+            load_csv_plot_dataset(
+                ATP_PERIPH_CSV,
+                "ATPEDGEPROC"
+            )
+
+            def plot_atp_profiles():
+                p = sv.create_plot(
+                    name="Plot_ATPProfiles",
+                    xy=True
+                )
+
+                sv.create_curve(
+                    name="Curve_ATPCenter",
+                    plot=p,
+                    dataset="ATPCENTERPROC",
+                    axisX=(
+                        "DepthFromGratingSiInterface_um"
+                    ),
+                    axisY="jBreakdownProbability"
+                )
+
+                sv.create_curve(
+                    name="Curve_ATPPeriph",
+                    plot=p,
+                    dataset="ATPEDGEPROC",
+                    axisX=(
+                        "DepthFromGratingSiInterface_um"
+                    ),
+                    axisY="jBreakdownProbability"
+                )
+
+                sv.set_plot_prop(
+                    plot=p,
+                    show_grid=True,
+                    show_legend=True,
+                    title=(
+                        f"Legacy ATP Diagnostic Profiles at "
+                        f"{atp_bias:.2f} V "
+                        f"(Vex={atp_vex:.2f} V)"
+                        if np.isfinite(atp_vex)
+                        else
+                        f"Legacy ATP Diagnostic Profiles at "
+                        f"{atp_bias:.2f} V"
+                    )
+                )
+
+                sv.set_axis_prop(
+                    plot=p,
+                    axis="x",
+                    title=(
+                        "Depth from "
+                        "Grating/Si Interface [um]"
+                    )
+                )
+
+                sv.set_axis_prop(
+                    plot=p,
+                    axis="y",
+                    title="jBreakdownProbability"
+                )
+
+                return p
+
+            safe_plot(
+                plot_atp_profiles,
+                "ATPProfiles"
+            )
+
+        # ----------------------------------------------------------
+        # 10C. Sampled cylindrical r-z ATP map
+        #
+        # Every successful radial cut contributes:
+        #   - full (r,z,j,e,h) map points,
+        #   - j(r,z=180 nm) for axis/peak180 metrics.
+        # ----------------------------------------------------------
+
+        map_r = []
+        map_y = []
+        map_z = []
+        map_j = []
+        map_e = []
+        map_h = []
+
+        radial_positions = np.linspace(
+            0.0,
+            EDGE_R,
+            ATP_RADIAL_SAMPLES
+        )
+
+        for index, radius in enumerate(
+            radial_positions
+        ):
+            cut_data = read_atp_cut(
+                atp_plot,
+                float(radius),
+                f"ATP_MAP_{index:03d}",
+                verbose=False
+            )
+
+            if cut_data is None:
+                continue
+
+            zmap = cut_data["z"]
+            pjmap = cut_data["pj"]
+            pemap = cut_data["pe"]
+            phmap = cut_data["ph"]
+
+            if zmap.size == 0:
+                continue
+
+            radius_value = float(radius)
+
+            # Research metric at the optical anchor z=180 nm.
+            p180 = interp_inside(
+                zmap,
+                pjmap,
+                OPTICAL_ANCHOR_UM
+            )
+
+            if np.isclose(
+                radius_value,
+                0.0,
+                atol=1.0e-12
+            ):
+                atp_axis180 = p180
+
+            if np.isfinite(p180):
+                if (
+                    not np.isfinite(atp_peak180) or
+                    p180 > atp_peak180
+                ):
+                    atp_peak180 = float(p180)
+                    atp_peak180_r_um = radius_value
+
+            map_r.append(
+                np.full(
+                    zmap.shape,
+                    radius_value,
+                    dtype=float
+                )
+            )
+
+            map_y.append(
+                zmap +
+                Y_GRATING_SI_INTERFACE
+            )
+
+            map_z.append(zmap)
+            map_j.append(pjmap)
+            map_e.append(pemap)
+            map_h.append(phmap)
+
+            atp_map_success += 1
+
+        if map_j:
+            r_all = np.concatenate(
+                map_r
+            )
+            y_all = np.concatenate(
+                map_y
+            )
+            z_all = np.concatenate(
+                map_z
+            )
+            pj_all = np.concatenate(
+                map_j
+            )
+            pe_all = np.concatenate(
+                map_e
+            )
+            ph_all = np.concatenate(
+                map_h
+            )
+
+            finite_map = (
+                np.isfinite(r_all) &
+                np.isfinite(z_all) &
+                np.isfinite(pj_all)
+            )
+
+            if np.any(finite_map):
+                r_f = r_all[finite_map]
+                z_f = z_all[finite_map]
+                pj_f = pj_all[finite_map]
+
+                peak_index = int(
+                    np.argmax(pj_f)
+                )
+
+                atp_peak = float(
+                    pj_f[peak_index]
+                )
+                atp_peak_r_um = float(
+                    r_f[peak_index]
+                )
+                atp_peak_z_nm = float(
+                    z_f[peak_index] *
+                    1000.0
+                )
+
+            atp_map_nodes = float(
+                len(pj_all)
+            )
+
+            save_csv(
+                ATP_MAP_CSV,
+                {
+                    "Radius_um": r_all,
+                    "RawY_um": y_all,
+                    (
+                        "DepthFromGratingSiInterface_um"
+                    ): z_all,
+                    "jBreakdownProbability": pj_all,
+                    "eBreakdownProbability": pe_all,
+                    "hBreakdownProbability": ph_all,
+                }
+            )
+
+            print(
+                "SVISUALPY_STAGE1: "
+                "ATP_MAP_CREATED "
+                f"radial_cuts="
+                f"{atp_map_success}/"
+                f"{ATP_RADIAL_SAMPLES}, "
+                f"points={len(pj_all)}"
+            )
+
+            print(
+                "SVISUALPY_STAGE1: ATP_RESEARCH_METRICS "
+                f"axis180={atp_axis180}, "
+                f"peak180={atp_peak180} "
+                f"at_r={atp_peak180_r_um}, "
+                f"peak={atp_peak} "
+                f"at_r={atp_peak_r_um}, "
+                f"at_z_nm={atp_peak_z_nm}"
+            )
+
+        else:
+            print(
+                "SVISUALPY_STAGE1: "
+                "ATP_MAP_NO_VALID_CUTLINES"
+            )
+
+        atp_ok = float(
+            np.isfinite(vbd) and
+            np.isfinite(atp_bias) and
+            atp_bias >= vbd and
+            atp_precheck_ok > 0.5 and
+            np.isfinite(atp_axis180) and
+            np.isfinite(atp_peak180) and
+            np.isfinite(atp_peak) and
+            np.isfinite(atp_peak_r_um) and
+            np.isfinite(atp_peak_z_nm) and
+            atp_map_success > 0
+        )
+
+
+# ----------------------------------------------------------------------
+# 11. Append ATP details and compact DOE values
+# ----------------------------------------------------------------------
+
+with open(METRICS_FILE, "a") as m:
+    m.write("\n[ATP]\n")
+
+    m.write(
+        f"ATP_target_excess_bias_V = "
+        f"{ATP_TARGET_VEX}\n"
+    )
+
+    m.write(
+        f"ATP_selected_tdr = "
+        f"{atp_file}\n"
+    )
+
+    m.write(
+        f"ATP_joint_variable = "
+        f"{atp_joint_name}\n"
+    )
+
+    m.write(
+        f"ATP_electron_variable = "
+        f"{atp_e_name}\n"
+    )
+
+    m.write(
+        f"ATP_hole_variable = "
+        f"{atp_h_name}\n"
+    )
+
+    m.write(
+        "ATP_map_type = "
+        "sampled_radial_cutlines\n"
+    )
+
+    m.write(
+        "ATP_map_node_count_semantics = "
+        "sampled_cutline_points\n"
+    )
+
+    m.write(
+        f"ATP_radial_sample_target = "
+        f"{ATP_RADIAL_SAMPLES}\n"
+    )
+
+    m.write(
+        f"ATP_radial_sample_success = "
+        f"{atp_map_success}\n"
+    )
+
+    write_metric(
+        m,
+        "ATP_alldata_load_ok",
+        atp_alldata_ok
+    )
+
+    write_metric(
+        m,
+        "ATP_center_precheck_ok",
+        atp_precheck_ok
+    )
+
+    write_metric(
+        m,
+        "ATP_selected_bias_V",
+        atp_bias
+    )
+
+    write_metric(
+        m,
+        "ATP_excess_bias_V",
+        atp_vex
+    )
+
+    write_metric(
+        m,
+        "ATP_map_node_count",
+        atp_map_nodes
+    )
+
+    # Research-facing ATP metrics
+    write_metric(
+        m,
+        "ATP_axis180",
+        atp_axis180
+    )
+
+    write_metric(
+        m,
+        "ATP_peak180",
+        atp_peak180
+    )
+
+    write_metric(
+        m,
+        "ATP_peak180_r_um",
+        atp_peak180_r_um
+    )
+
+    write_metric(
+        m,
+        "ATP_peak",
+        atp_peak
+    )
+
+    write_metric(
+        m,
+        "ATP_peak_r_um",
+        atp_peak_r_um
+    )
+
+    write_metric(
+        m,
+        "ATP_peak_z_nm",
+        atp_peak_z_nm
+    )
+
+    # Legacy diagnostic values retained only in the metrics text file.
+    write_metric(
+        m,
+        "ATP_legacy_r4p6875_180nm_DIAG",
+        atp_center_180
+    )
+
+    write_metric(
+        m,
+        "ATP_legacy_r12p5_180nm_DIAG",
+        atp_periph_180
+    )
+
+    write_metric(
+        m,
+        "ATP_legacy_r4p6875_max_DIAG",
+        atp_center_max
+    )
+
+    write_metric(
+        m,
+        "ATP_legacy_r12p5_max_DIAG",
+        atp_periph_max
+    )
+
+    # Compact Workbench DOE values
+    emit(
+        m,
+        "ATP_bias_V",
+        atp_bias
+    )
+
+    emit(
+        m,
+        "ATP_Vex_V",
+        atp_vex
+    )
+
+    emit(
+        m,
+        "ATP_axis180",
+        atp_axis180
+    )
+
+    emit(
+        m,
+        "ATP_peak180",
+        atp_peak180
+    )
+
+    emit(
+        m,
+        "ATP_peak",
+        atp_peak
+    )
+
+    emit(
+        m,
+        "ATP_peak_r_um",
+        atp_peak_r_um
+    )
+
+    emit(
+        m,
+        "ATP_peak_z_nm",
+        atp_peak_z_nm
+    )
+
+    emit(
+        m,
+        "ATP_OK",
+        atp_ok
+    )
+
+safe_plot(
+    lambda: sv.windows_style(
+        style="grid"
+    ),
+    "GridLayoutFinal"
+)
+
+print("SVISUALPY_STAGE1: COMPLETE")
