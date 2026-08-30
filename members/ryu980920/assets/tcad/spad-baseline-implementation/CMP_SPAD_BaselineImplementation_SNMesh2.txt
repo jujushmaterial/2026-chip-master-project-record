@@ -1,0 +1,301 @@
+#setdep @node|-1@
+#setdep @node|sprocess@
+
+#=============================================================================
+# CMP FD-SOI SPAD / B track
+# SMesh pass 2: electrical device remesh + SProcess profile interpolation
+# Version 1.1, 2026-08-28
+#
+# PURPOSE
+#   1) Read the boundary extracted by the immediately upstream Mesh2bnd node.
+#   2) Generate an SDevice-oriented electrical mesh.
+#   3) Interpolate the accepted SProcess datasets from
+#      BL_CH7R4_FINELITE_fps.tdr onto the new mesh.
+#
+# INPUTS
+#   Geometry/boundary:
+#     n@node|-1@_bnd.tdr
+#
+#   SProcess field/profile source:
+#     BL_CH7R4_FINELITE_fps.tdr
+#
+# OUTPUT
+#   n@node@_msh.tdr
+#
+# COORDINATE RULE
+#   useDFISEcoordinates is used for both the extracted boundary and the
+#   SProcess submesh source.
+#
+#   Device coordinates:
+#       x = radius
+#       y = depth from the SProcess bulk-Si surface
+#
+#   Project common coordinate:
+#       bulk-Si surface              y_raw = 0.000 um
+#       grating/Si interface anchor  y_raw = 0.300 um
+#       z_if = y_raw - 0.300 um
+#
+# IMPORTANT
+#   - This file does not modify the process recipe.
+#   - STI positions and process profiles are not intentionally moved.
+#   - Mesh sizes are [surrogate numerical refinement].
+#   - Verify geometry/contact preservation and mapped doping in SVisual before
+#     running the VBD/SCR SDevice calibration deck.
+#=============================================================================
+
+Title "CMP SPAD B-track SProcess-to-SDevice electrical mesh v1.1"
+
+IOControls {
+  EnableSections
+  inputFile  = "n@node|-1@_bnd.tdr"
+  outputFile = "n@node@_msh.tdr"
+  useDFISEcoordinates
+  numThreads = 4
+  verbosity  = 2
+}
+
+
+#=============================================================================
+# 1. Definitions
+#=============================================================================
+Definitions {
+
+  # --------------------------------------------------------------------------
+  # Existing SProcess mesh is used only as the source of profile/field data.
+  # Sentaurus Mesh interpolates those datasets onto the newly generated mesh.
+  # --------------------------------------------------------------------------
+  SubMesh "SM.ProcessProfile" {
+    Geofile = "BL_CH7R4_FINELITE_fps.tdr"
+  }
+
+  # --------------------------------------------------------------------------
+  # Global fallback mesh.
+  # Deep neutral bulk is intentionally coarse.
+  # --------------------------------------------------------------------------
+  Refinement "RD.Global" {
+    MaxElementSize = (3.00 1.50)
+    MinElementSize = (0.80 0.40)
+  }
+
+  # --------------------------------------------------------------------------
+  # Broad electrically relevant depletion envelope.
+  # --------------------------------------------------------------------------
+  Refinement "RD.Depletion" {
+    MaxElementSize = (0.80 0.30)
+    MinElementSize = (0.15 0.06)
+  }
+
+  # --------------------------------------------------------------------------
+  # General PW/DNW/NW profile region.
+  # --------------------------------------------------------------------------
+  Refinement "RD.Profile" {
+    MaxElementSize = (0.80 0.30)
+    MinElementSize = (0.04 0.02)
+
+    RefineFunction = MaxTransDiff(
+      Variable = "DopingConcentration",
+      Value    = 1.5
+    )
+  }
+
+  # --------------------------------------------------------------------------
+  # Expected multiplication/SCR region.
+  #
+  # Common baseline SCR center:
+  #   z_if ~ 0.180 um
+  #   raw y ~ 0.480 um
+  # --------------------------------------------------------------------------
+  Refinement "RD.SCRCore" {
+    MaxElementSize = (0.20 0.030)
+    MinElementSize = (0.04 0.0075)
+
+    RefineFunction = MaxTransDiff(
+      Variable = "DopingConcentration",
+      Value    = 1.0
+    )
+  }
+
+  # --------------------------------------------------------------------------
+  # PW/DNW metallurgical-junction region.
+  # Current accepted SProcess proxy is raw y ~ 0.465 um.
+  # --------------------------------------------------------------------------
+  Refinement "RD.Junction" {
+    MaxElementSize = (0.15 0.020)
+    MinElementSize = (0.03 0.005)
+
+    RefineFunction = MaxTransDiff(
+      Variable = "DopingConcentration",
+      Value    = 0.7
+    )
+  }
+
+  # --------------------------------------------------------------------------
+  # Thin 7 nm UpperSi / 25 nm BOX stack.
+  # --------------------------------------------------------------------------
+  Refinement "RD.Stack" {
+    MaxElementSize = (0.50 0.010)
+    MinElementSize = (0.10 0.005)
+
+    RefineFunction = MaxLenInt(
+      Interface("Silicon","Oxide"),
+      Value = 0.005,
+      Factor = 1.5,
+      DoubleSide
+    )
+  }
+
+  # --------------------------------------------------------------------------
+  # Central anode / P+ pickup.
+  # --------------------------------------------------------------------------
+  Refinement "RD.Anode" {
+    MaxElementSize = (0.15 0.05)
+    MinElementSize = (0.03 0.01)
+
+    RefineFunction = MaxTransDiff(
+      Variable = "DopingConcentration",
+      Value    = 1.0
+    )
+  }
+
+  # --------------------------------------------------------------------------
+  # Native STI1-STI4.
+  # --------------------------------------------------------------------------
+  Refinement "RD.STI14" {
+    MaxElementSize = (0.15 0.08)
+    MinElementSize = (0.03 0.015)
+
+    RefineFunction = MaxLenInt(
+      Interface("Silicon","Oxide"),
+      Value = 0.015,
+      Factor = 1.5,
+      DoubleSide
+    )
+  }
+
+  # --------------------------------------------------------------------------
+  # Peripheral STI5 / active edge / DNW-NW side.
+  # Primary PEB-sensitive refinement region.
+  # --------------------------------------------------------------------------
+  Refinement "RD.PEB" {
+    MaxElementSize = (0.25 0.12)
+    MinElementSize = (0.03 0.015)
+
+    RefineFunction = MaxTransDiff(
+      Variable = "DopingConcentration",
+      Value    = 1.0
+    )
+
+    RefineFunction = MaxLenInt(
+      Interface("Silicon","Oxide"),
+      Value = 0.010,
+      Factor = 1.5,
+      DoubleSide
+    )
+  }
+
+  # --------------------------------------------------------------------------
+  # STI6 / outer P-well / substrate pickup / STI7.
+  # --------------------------------------------------------------------------
+  Refinement "RD.Outer" {
+    MaxElementSize = (0.30 0.15)
+    MinElementSize = (0.04 0.02)
+
+    RefineFunction = MaxTransDiff(
+      Variable = "DopingConcentration",
+      Value    = 1.2
+    )
+  }
+}
+
+
+#=============================================================================
+# 2. Placements
+#=============================================================================
+Placements {
+
+  # --------------------------------------------------------------------------
+  # Apply the complete SProcess external profile to the whole structure.
+  # With no EvaluateWindow, the placement applies to the entire device.
+  # --------------------------------------------------------------------------
+  SubMesh "PL.ProcessProfile" {
+    Reference = "SM.ProcessProfile"
+  }
+
+  # Full half-device.
+  Refinement "PL.Global" {
+    Reference = "RD.Global"
+    RefineWindow = rectangle [(0.000 -0.032), (24.000 10.300)]
+  }
+
+  # Broad electrical envelope.
+  Refinement "PL.Depletion" {
+    Reference = "RD.Depletion"
+    RefineWindow = rectangle [(0.000 0.250), (20.200 4.800)]
+  }
+
+  # PW/DNW/NW profile region.
+  Refinement "PL.Profile" {
+    Reference = "RD.Profile"
+    RefineWindow = rectangle [(0.000 0.000), (20.500 2.450)]
+  }
+
+  # Expected active multiplication/SCR slab.
+  Refinement "PL.SCRCore" {
+    Reference = "RD.SCRCore"
+    RefineWindow = rectangle [(0.000 0.350), (12.900 0.700)]
+  }
+
+  # PW/DNW metallurgical-junction slab.
+  Refinement "PL.Junction" {
+    Reference = "RD.Junction"
+    RefineWindow = rectangle [(0.000 0.400), (16.300 0.560)]
+  }
+
+  # Thin SOI stack over the active region.
+  Refinement "PL.Stack" {
+    Reference = "RD.Stack"
+    RefineWindow = rectangle [(0.550 -0.032), (12.200 0.020)]
+  }
+
+  # Central P+ anode.
+  Refinement "PL.Anode" {
+    Reference = "RD.Anode"
+    RefineWindow = rectangle [(0.000 -0.010), (0.800 0.350)]
+  }
+
+  # STI1.
+  Refinement "PL.STI1" {
+    Reference = "RD.STI14"
+    RefineWindow = rectangle [(0.600 -0.032), (1.400 0.450)]
+  }
+
+  # STI2.
+  Refinement "PL.STI2" {
+    Reference = "RD.STI14"
+    RefineWindow = rectangle [(2.875 -0.032), (3.375 0.450)]
+  }
+
+  # STI3.
+  Refinement "PL.STI3" {
+    Reference = "RD.STI14"
+    RefineWindow = rectangle [(6.000 -0.032), (6.500 0.450)]
+  }
+
+  # STI4.
+  Refinement "PL.STI4" {
+    Reference = "RD.STI14"
+    RefineWindow = rectangle [(9.125 -0.032), (9.625 0.450)]
+  }
+
+  # STI5 / active edge / cathode / DNW edge.
+  Refinement "PL.PEB" {
+    Reference = "RD.PEB"
+    RefineWindow = rectangle [(11.600 -0.062), (16.000 2.100)]
+  }
+
+  # Outer isolation and substrate pickup.
+  Refinement "PL.Outer" {
+    Reference = "RD.Outer"
+    RefineWindow = rectangle [(16.500 -0.062), (20.000 2.600)]
+  }
+}
