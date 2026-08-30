@@ -21,13 +21,13 @@ B의 ATP/dark 계산은 동일 SDE geometry와 mesh를 입력으로 사용하되
 ## Files
 
 ```text
-CMP_SPAD_Diagnostic_ATP_SDevice_v1.0.txt
-CMP_SPAD_DarkCurrent_SDevice_v1.0.txt
-CMP_SPAD_Diagnostic_ATP_SVisualPy_v3.3.txt
-CMP_SPAD_DarkCurrent_SVisualPy_v1.1.txt
+CMP_SPAD_Diagnostic_ATP_SDevice.txt
+CMP_SPAD_DarkCurrent_SDevice.txt
+CMP_SPAD_Diagnostic_ATP_SVisualPy.txt
+CMP_SPAD_DarkCurrent_SVisualPy.txt
 ```
 
-### CMP_SPAD_Diagnostic_ATP_SDevice_v1.0.txt
+### CMP_SPAD_Diagnostic_ATP_SDevice.txt
 
 - Workbench 역할: n5
 - impact-ionization feedback OFF
@@ -37,7 +37,7 @@ CMP_SPAD_DarkCurrent_SVisualPy_v1.1.txt
 - `eBreakdownProbability`, `hBreakdownProbability`, `jBreakdownProbability` 출력
 - above-breakdown ATP snapshot 생성을 위해 20 V까지 진행
 
-### CMP_SPAD_DarkCurrent_SDevice_v1.0.txt
+### CMP_SPAD_DarkCurrent_SDevice.txt
 
 - Workbench 역할: n6
 - impact-ionization feedback ON
@@ -46,7 +46,7 @@ CMP_SPAD_DarkCurrent_SVisualPy_v1.1.txt
 - `BreakCriteria`로 breakdown 부근 runaway 제한
 - trap/lifetime calibration 전에는 절대 DCR이 아니라 상대 dark-current 또는 DCR proxy로 해석
 
-### CMP_SPAD_Diagnostic_ATP_SVisualPy_v3.3.txt
+### CMP_SPAD_Diagnostic_ATP_SVisualPy.txt
 
 - Workbench 역할: n8
 - n5 직접 후처리
@@ -60,7 +60,7 @@ CMP_SPAD_DarkCurrent_SVisualPy_v1.1.txt
   - `ATP_peak_z_nm`
 - 기존 `r=4.6875 um`, `r=12.5 um` 값은 legacy diagnostic profile로만 유지
 
-### CMP_SPAD_DarkCurrent_SVisualPy_v1.1.txt
+### CMP_SPAD_DarkCurrent_SVisualPy.txt
 
 - Workbench 역할: n9
 - direct parent n6의 feedback-ON reverse I-V를 사용
@@ -88,10 +88,10 @@ Common SDE / mesh
 Git blob SHA 기준 원문 일치값:
 
 ```text
-CMP_SPAD_Diagnostic_ATP_SDevice_v1.0.txt    2b8cd60b50edc7d7404c47b1ebbfa039c3aae027
-CMP_SPAD_DarkCurrent_SDevice_v1.0.txt       5227f68fa2acd6375a2dbcbadd19743e415d813d
-CMP_SPAD_Diagnostic_ATP_SVisualPy_v3.3.txt  a6cd3906a1e664ac5c0bbea3b02e8f01c76ee50e
-CMP_SPAD_DarkCurrent_SVisualPy_v1.1.txt     b2f352787eede4b7a481f6acb65df5e6874b6af9
+CMP_SPAD_Diagnostic_ATP_SDevice.txt    2b8cd60b50edc7d7404c47b1ebbfa039c3aae027
+CMP_SPAD_DarkCurrent_SDevice.txt       5227f68fa2acd6375a2dbcbadd19743e415d813d
+CMP_SPAD_Diagnostic_ATP_SVisualPy.txt  a6cd3906a1e664ac5c0bbea3b02e8f01c76ee50e
+CMP_SPAD_DarkCurrent_SVisualPy.txt     b2f352787eede4b7a481f6acb65df5e6874b6af9
 ```
 
 ## Notes
