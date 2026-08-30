@@ -1,0 +1,483 @@
+#=============================================================================
+# CMP FD-SOI SPAD / B track
+# sproc_baseline_v0.9_SWB9_parameterized_FINELITE.txt
+#
+# Process-topology basis:
+#   - Preserve v0.4 geometry numbers, DNW/NW/P+ seeds, mask radii.
+#   - Preserve the industrial-style process order:
+#       SOI -> STI -> well implants -> common WELL RTA
+#       -> local UpperSi/BOX removal -> shallow P+ contact implants
+#       -> fixed short contact spike -> contacts/export
+#   - PW is implemented as fixed+trim two-energy multi-implant.
+#
+# Sentaurus Workbench parameter interface:
+#   Every parameter column currently exposed in SWB is read from @...@.
+#   DNW_DOSE      = @DNW_DOSE@
+#   DNW_E         = @DNW_E@ keV
+#   PW_TRIM_E     = @PW_TRIM_E@ keV
+#   PW_FIXED_E    = @PW_FIXED_E@ keV
+#   PW_TRIM_FRAC  = @PW_TRIM_FRAC@
+#   PW_FIXED_FRAC = @PW_FIXED_FRAC@
+#   PW_TOTAL_DOSE = @PW_TOTAL_DOSE@
+#   RTA_T         = @RTA_T@ C
+#   RTA_t         = @RTA_t@ s
+#
+# Current baseline-calibration reference values in SWB:
+#   DNW_DOSE      = 2.94e13 cm^-2
+#   DNW_E         = 915 keV
+#   PW_TRIM_E     = 95 keV
+#   PW_FIXED_E    = 32 keV
+#   PW_TRIM_FRAC  = 0.65
+#   PW_FIXED_FRAC = 0.35
+#   PW_TOTAL_DOSE = 2.06e13 cm^-2
+#   RTA_T         = 1050 C
+#   RTA_t         = 30 s
+#
+# Calibration policy:
+#   PW_FIXED_E, PW_TRIM_FRAC, PW_FIXED_FRAC and PW_TOTAL_DOSE remain numerically
+#   fixed across the current calibration experiments, but they are still read
+#   from SWB rather than hard-coded here.
+#   implant = tilt 7 deg, rotation 0 deg, mult.rot 4
+#
+# Mesh:
+#   FINE-Lite process mesh for baseline verification.
+#   It is intentionally coarser than the previous true-FINE mesh to reduce
+#   SProcess runtime while keeping the thin SOI stack and PW/DNW junction fine.
+#
+# Evidence labels:
+#   [PUBLIC_28FD] ST/Soitec public 28 nm planar FD-SOI outline flow:
+#                 STI -> N/P/DNW well implants -> BP implant
+#                 -> Local BOX removal -> later FEOL.
+#   [SPAD_PAPER]  28 nm FD-SOI SPAD literature: standard process is used,
+#                 with modified DNW implantation as the key process change.
+#   [SDE_V13]     Supplied SDE v1.3 geometry/doping target.
+#   [SURROGATE]   Explicit research assumption, not a foundry recipe.
+#
+# IMPORTANT:
+#   - This is NOT an ST manufacturing-recipe reconstruction.
+#   - No BP-N/BP-P implant is invented because SDE v1.3 has no independent
+#     back-plane doping target.
+#   - DNW and PW receive one shared variable well-activation RTA.
+#   - P+ contact implants are outside that well-RTA definition and receive
+#     only a separate fixed short contact spike.
+#   - mult.rot=4 distributes the implant over four azimuthal rotations.
+#     Do NOT manually divide the implant dose by 4.
+#=============================================================================
+
+
+#=============================================================================
+# 0. Variables
+#=============================================================================
+set DNW_DOSE  @DNW_DOSE@
+set DNW_E     @DNW_E@
+
+# PW multi-implant baseline calibration.
+#
+# WORKBENCH CALIBRATION NOTE:
+#   - All SWB parameter columns are supplied by @...@ substitution.
+#   - Current calibration varies DNW_DOSE, DNW_E, RTA_T and RTA_t.
+#   - PW_TRIM_E is held at 95 keV during the current coarse baseline calibration.
+#   - PW_TOTAL_DOSE, PW_FIXED_E and both PW dose fractions are kept numerically
+#     identical across experiments, but are also supplied by SWB.
+#
+# PROJECT LOGIC:
+#   - Total PW dose remains fixed initially.
+#   - PW_FIXED_E and both dose fractions are frozen after baseline calibration.
+#   - Only PW_TRIM_E is used as the dependent trim variable in the B-track DOE
+#     to recover z_SCR ~= z_SCR,baseline after DNW / anneal changes.
+set PW_TOTAL_DOSE  @PW_TOTAL_DOSE@
+
+set PW_FIXED_FRAC  @PW_FIXED_FRAC@
+set PW_TRIM_FRAC   @PW_TRIM_FRAC@
+
+set PW_FIXED_DOSE  [expr $PW_TOTAL_DOSE*$PW_FIXED_FRAC]
+set PW_TRIM_DOSE   [expr $PW_TOTAL_DOSE*$PW_TRIM_FRAC]
+
+set PW_FIXED_E     @PW_FIXED_E@
+set PW_TRIM_E      @PW_TRIM_E@
+
+set NW_DOSE   7.75e14
+set NW_E      400
+
+set PP_DOSE   8.21e13
+set PP_E      5
+
+# B-track DOE well activation variables.
+set RTA_T     @RTA_T@
+set RTA_t     @RTA_t@
+
+# Fixed shallow-contact activation surrogate.
+# This is NOT a B-track DOE variable.
+set SPIKE_T   1050
+set SPIKE_t   1.5
+
+# Implant-direction condition.
+set IMP_TILT  7
+set IMP_ROT   0
+set IMP_MROT  4
+
+set CASE_TAG  "CH7R4_FINELITE"
+
+# Echo resolved SWB inputs into the SProcess log for automatic audit.
+puts "=== CMP SWB RESOLVED PARAMETERS ==="
+puts "DNW_DOSE=$DNW_DOSE"
+puts "DNW_E=$DNW_E"
+puts "PW_TRIM_E=$PW_TRIM_E"
+puts "PW_FIXED_E=$PW_FIXED_E"
+puts "PW_TRIM_FRAC=$PW_TRIM_FRAC"
+puts "PW_FIXED_FRAC=$PW_FIXED_FRAC"
+puts "PW_TOTAL_DOSE=$PW_TOTAL_DOSE"
+puts "RTA_T=$RTA_T"
+puts "RTA_t=$RTA_t"
+puts "==================================="
+
+
+
+#=============================================================================
+# 1. Fixed SDE v1.3 geometry
+#=============================================================================
+set T_USI       0.007
+set T_BOX       0.025
+set T_STI       0.300
+
+set X_TOP      -0.032
+set X_BOX_TOP  -0.025
+set X_SURF      0.000
+set X_BOT      10.300
+set R_DOMAIN   24.00
+
+set T_USI_ETCH [expr 1.001*$T_USI]
+set T_BOX_ETCH [expr 1.001*$T_BOX]
+set T_STI_ETCH [expr 1.001*$T_STI]
+
+set STI_SEGS {
+   0.700  1.300
+   2.975  3.275
+   6.100  6.400
+   9.225  9.525
+  12.200 12.800
+  17.000 17.600
+  18.800 19.400
+}
+
+# Final SDE v1.3 has UpperSi/BOX only in:
+#   0.55-0.70
+#   1.30-2.975
+#   3.275-6.10
+#   6.40-9.225
+#   9.525-12.20
+#
+# These removal windows reproduce that final geometry AFTER the well module.
+# STI intervals themselves are excluded so filled STI oxide is preserved.
+set LOCAL_BOX_REMOVE_SEGS {
+  -0.100  0.550
+  12.800 17.000
+  17.600 18.800
+  19.400 24.100
+}
+
+set R_PW_E      12.50
+set R_DNW_E     16.30
+set R_NW_S      14.20
+set R_NW_E      15.40
+set R_PPAN_E     0.55
+set R_SUBPW_S   17.60
+set R_SUBPW_E   18.80
+set R_SUBC_S    17.80
+set R_SUBC_E    18.60
+
+# Fixed STI densification surrogate.
+set DENS_T      1000
+set DENS_min      20
+
+set AXIS_EXT    -0.10
+
+
+#=============================================================================
+# 2. FINE-Lite mesh and initial SOI structure
+#=============================================================================
+line clear
+
+# ---------------------------------------------------------------------------
+# Depth mesh
+# ---------------------------------------------------------------------------
+# Thin 7 nm UpperSi / 25 nm BOX stack remains fine.
+line x location=$X_TOP       spacing=0.003  tag=Top
+line x location=$X_BOX_TOP   spacing=0.003  tag=BOXTop
+line x location=$X_SURF      spacing=0.005  tag=SiTop
+
+# PW region.
+line x location=0.100        spacing=0.010
+line x location=0.300        spacing=0.010
+
+# PW/DNW metallurgical-junction region.
+# Current calibrated FAST junction is about 0.465 um.
+line x location=0.450        spacing=0.008
+line x location=0.700        spacing=0.008
+
+# DNW Rp region.
+line x location=1.000        spacing=0.015
+
+# Deeper profile / bulk.
+line x location=1.600        spacing=0.040
+line x location=2.500        spacing=0.100
+line x location=5.000        spacing=0.400
+line x location=$X_BOT       spacing=1.000  tag=SiBottom
+
+# ---------------------------------------------------------------------------
+# Radial mesh
+# ---------------------------------------------------------------------------
+line y location=0.000        spacing=0.060  tag=RAxis
+line y location=0.550        spacing=0.030
+line y location=0.700        spacing=0.030
+line y location=1.300        spacing=0.040
+line y location=2.975        spacing=0.040
+line y location=3.275        spacing=0.040
+line y location=6.100        spacing=0.050
+line y location=6.400        spacing=0.050
+line y location=9.225        spacing=0.050
+line y location=9.525        spacing=0.050
+line y location=11.800       spacing=0.050
+
+# STI5 / active edge.
+line y location=12.200       spacing=0.030
+line y location=12.800       spacing=0.030
+
+# Peripheral PW/DNW transition.
+line y location=13.200       spacing=0.040
+
+# Cathode / DNW edge / outer well.
+line y location=14.200       spacing=0.050
+line y location=15.400       spacing=0.050
+line y location=16.300       spacing=0.060
+line y location=17.000       spacing=0.050
+line y location=17.600       spacing=0.040
+line y location=18.800       spacing=0.040
+line y location=19.400       spacing=0.050
+line y location=$R_DOMAIN    spacing=0.800  tag=ROuter
+
+region Silicon xlo=Top xhi=BOXTop ylo=RAxis yhi=ROuter name=UpperSi
+region Oxide   xlo=BOXTop xhi=SiTop ylo=RAxis yhi=ROuter name=BOX
+region Silicon xlo=SiTop xhi=SiBottom ylo=RAxis yhi=ROuter \
+       name=Bulk substrate field=Boron concentration=1.0e15<cm-3>
+
+init
+
+mgoals on min.normal.size=3<nm> max.lateral.size=0.50<um> \
+   normal.growth.ratio=1.4
+
+
+#=============================================================================
+# 3. STI module
+#=============================================================================
+# [PUBLIC_28FD] Lateral isolation (STI) precedes the well-implant module.
+# [SDE_V13] STI crosses UpperSi and BOX and penetrates 0.300 um into bulk Si.
+#
+# Starting from the intact SOI stack, etch through:
+#   UpperSi -> BOX -> bulk Silicon.
+mask clear
+mask name=M_STI segments=$STI_SEGS negative
+
+etch Silicon anisotropic thickness=${T_USI_ETCH}<um> mask=M_STI
+etch Oxide   anisotropic thickness=${T_BOX_ETCH}<um> mask=M_STI
+etch Silicon anisotropic thickness=${T_STI_ETCH}<um> mask=M_STI
+
+deposit Oxide fill coord=${X_TOP}<um> mask=M_STI region.name=STI
+
+grid remesh
+
+# [SURROGATE] Fixed STI densification before well implantation.
+diffuse temperature=${DENS_T}<C> time=${DENS_min}<min>
+grid remesh
+
+struct tdr=BL_${CASE_TAG}_sti !restart !Gas
+
+
+#=============================================================================
+# 4. Well implant module
+#=============================================================================
+# [PUBLIC_28FD] N-Well/P-Well/DN-Well implantation follows STI.
+# [SPAD_PAPER] PW/NW/DNW are the relevant well modules for this SPAD.
+# [SURROGATE] Internal order DNW -> PW -> NW is not claimed as foundry order.
+#
+# PW IMPLEMENTATION:
+#   PW is implemented as a two-energy Boron implant chain:
+#     1) fixed shallow component: baseline-shape component
+#     2) deeper trim component: junction/SCR-position control component
+#
+# The two PW implants share one later well RTA with DNW/NW.
+# No anneal is inserted between PW components.
+#
+# Implant direction:
+#   tilt = 7 deg
+#   rotation = 0 deg
+#   mult.rot = 4
+#
+# In the B-track DOE:
+#   independent = DNW_DOSE, DNW_E, RTA_T, RTA_t
+#   dependent   = PW_TRIM_E only
+#   fixed       = PW_TOTAL_DOSE, PW_FIXED_FRAC, PW_TRIM_FRAC, PW_FIXED_E
+mask clear
+
+mask name=M_PW      left=$AXIS_EXT   right=$R_PW_E      negative
+mask name=M_DNW     left=$AXIS_EXT   right=$R_DNW_E     negative
+mask name=M_NW      left=$R_NW_S     right=$R_NW_E      negative
+mask name=M_PW_SUB  left=$R_SUBPW_S  right=$R_SUBPW_E   negative
+
+# DNW.
+implant Phosphorus energy=${DNW_E}<keV> dose=${DNW_DOSE}<cm-2> \
+   tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree> \
+   mult.rot=${IMP_MROT} mask=M_DNW
+
+# PW component 1: fixed shallow Boron implant.
+implant Boron energy=${PW_FIXED_E}<keV> dose=${PW_FIXED_DOSE}<cm-2> \
+   tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree> \
+   mult.rot=${IMP_MROT} mask=M_PW
+
+# PW component 2: deeper Boron implant.
+# PW_TRIM_E is the ONLY PW energy adjusted during the B-track SCR trim.
+implant Boron energy=${PW_TRIM_E}<keV> dose=${PW_TRIM_DOSE}<cm-2> \
+   tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree> \
+   mult.rot=${IMP_MROT} mask=M_PW
+
+# Apply the same frozen PW recipe to the outer substrate P-well window.
+implant Boron energy=${PW_FIXED_E}<keV> dose=${PW_FIXED_DOSE}<cm-2> \
+   tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree> \
+   mult.rot=${IMP_MROT} mask=M_PW_SUB
+
+implant Boron energy=${PW_TRIM_E}<keV> dose=${PW_TRIM_DOSE}<cm-2> \
+   tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree> \
+   mult.rot=${IMP_MROT} mask=M_PW_SUB
+
+# N-well cathode pickup.
+implant Phosphorus energy=${NW_E}<keV> dose=${NW_DOSE}<cm-2> \
+   tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree> \
+   mult.rot=${IMP_MROT} mask=M_NW
+
+
+#=============================================================================
+# 5. Common WELL activation RTA
+#=============================================================================
+# PROJECT DEFINITION:
+#   RTA_T and RTA_t belong to the well module.
+#   DNW, both PW implant components, and NW receive this SAME anneal.
+#   There is no separate DNW/PW anneal and no anneal between PW components.
+#   P+ contact implants do NOT exist yet and therefore do not receive this RTA.
+SetPlxList { BTotal BActive PTotal PActive }
+
+WritePlx BL_${CASE_TAG}_well_asimpl_r0.plx  y=0.0
+WritePlx BL_${CASE_TAG}_well_asimpl_r13.plx y=13.0
+
+diffuse temperature=${RTA_T}<C> time=${RTA_t}<s>
+grid remesh
+
+WritePlx BL_${CASE_TAG}_well_r0.plx  y=0.0
+WritePlx BL_${CASE_TAG}_well_r13.plx y=13.0
+
+
+#=============================================================================
+# 6. Local UpperSi / BOX removal
+#=============================================================================
+# [PUBLIC_28FD] Local BOX removal follows the well/back-plane implant portion
+# of the published 28 nm planar FD-SOI outline flow.
+#
+# [SDE_V13] This removal is used only to reproduce the supplied final geometry.
+# No additional SPAD geometry is invented here.
+mask clear
+mask name=M_LOCALBOX segments=$LOCAL_BOX_REMOVE_SEGS negative
+
+etch Silicon anisotropic thickness=${T_USI_ETCH}<um> mask=M_LOCALBOX
+etch Oxide   anisotropic thickness=${T_BOX_ETCH}<um> mask=M_LOCALBOX
+
+grid remesh
+
+struct tdr=BL_${CASE_TAG}_geom !restart !Gas
+
+
+#=============================================================================
+# 7. Shallow P+ contact implants
+#=============================================================================
+# [SDE_V13] P+ anode and substrate-pickup windows and seed profile are fixed.
+# [SURROGATE] These shallow contact implants are placed after local BOX removal
+# so they enter the exposed bulk-Si contact windows.
+mask clear
+
+mask name=M_PP_AN  left=$AXIS_EXT right=$R_PPAN_E negative
+mask name=M_PP_SUB left=$R_SUBC_S right=$R_SUBC_E negative
+
+implant Boron energy=${PP_E}<keV> dose=${PP_DOSE}<cm-2> \
+   tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree> \
+   mult.rot=${IMP_MROT} mask=M_PP_AN
+
+implant Boron energy=${PP_E}<keV> dose=${PP_DOSE}<cm-2> \
+   tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree> \
+   mult.rot=${IMP_MROT} mask=M_PP_SUB
+
+
+#=============================================================================
+# 8. Fixed short P+ contact activation
+#=============================================================================
+# This is deliberately separate from the B-track well RTA.
+# [SURROGATE] 1050 C / 1.5 s is a fixed short contact-activation seed,
+# not a claimed ST foundry value and not a DOE variable.
+#
+# The physical impact on the deep PW/DNW profile must be checked from the
+# final SProcess result rather than assumed to be exactly zero.
+diffuse temperature=${SPIKE_T}<C> time=${SPIKE_t}<s>
+grid remesh
+
+
+#=============================================================================
+# 9. Final profile diagnostics
+#=============================================================================
+# BASELINE-FREEZE RULE FOR PW MULTI-IMPLANT:
+#   Before B-track DOE begins, use the post-RTA r=0 PLX profile to fit:
+#     - PW peak concentration and near-surface level
+#     - PW tail / effective width
+#     - PW/DNW metallurgical-junction trend
+#   Then verify z_SCR in SDevice.
+#
+# Only after this calibration:
+#     PW_FIXED_E, PW_FIXED_FRAC, PW_TRIM_FRAC are frozen.
+#   During B DOE:
+#     PW_TRIM_E alone is adjusted to restore z_SCR ~= z_SCR,baseline.
+SetPlxList { BTotal BActive PTotal PActive }
+
+WritePlx BL_${CASE_TAG}_r0.plx  y=0.0
+WritePlx BL_${CASE_TAG}_r13.plx y=13.0
+
+select z=BTotal
+puts "=== BTotal layers @ r=0 ==="
+layers y=0.0
+puts "=== BTotal layers @ r=13 ==="
+layers y=13.0
+
+select z=PTotal
+puts "=== PTotal layers @ r=0 ==="
+layers y=0.0
+puts "=== PTotal layers @ r=13 ==="
+layers y=13.0
+
+
+#=============================================================================
+# 10. Contacts
+#=============================================================================
+contact clear
+
+contact box name=anode Silicon \
+   xlo=-0.005<um> xhi=0.010<um> ylo=0.00<um> yhi=0.55<um>
+
+contact box name=cathode Silicon \
+   xlo=-0.005<um> xhi=0.010<um> ylo=14.20<um> yhi=15.40<um>
+
+contact box name=substrate Silicon \
+   xlo=-0.005<um> xhi=0.010<um> ylo=17.80<um> yhi=18.60<um>
+
+contact list
+
+
+#=============================================================================
+# 11. Final export
+#=============================================================================
+# Cylindrical interpretation is applied later in SDevice.
+struct tdr=BL_${CASE_TAG} !restart !Gas contacts
