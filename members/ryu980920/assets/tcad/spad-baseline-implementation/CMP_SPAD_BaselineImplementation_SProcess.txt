@@ -116,7 +116,7 @@ set IMP_TILT  7
 set IMP_ROT   0
 set IMP_MROT  4
 
-set CASE_TAG  "CH7R4_FINELITE"
+set CASE_TAG  "n@node@_CH7R4_FINELITE"
 
 # Echo resolved SWB inputs into the SProcess log for automatic audit.
 puts "=== CMP SWB RESOLVED PARAMETERS ==="
@@ -129,6 +129,7 @@ puts "PW_FIXED_FRAC=$PW_FIXED_FRAC"
 puts "PW_TOTAL_DOSE=$PW_TOTAL_DOSE"
 puts "RTA_T=$RTA_T"
 puts "RTA_t=$RTA_t"
+puts "CASE_TAG=$CASE_TAG"
 puts "==================================="
 
 
