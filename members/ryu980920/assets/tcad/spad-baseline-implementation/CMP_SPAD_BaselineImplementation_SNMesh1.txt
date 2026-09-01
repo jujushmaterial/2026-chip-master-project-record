@@ -7,11 +7,11 @@
 #
 # PURPOSE
 #   - Reuse the already completed SProcess result.
-#   - Extract a boundary representation from BL_CH7R4_FINELITE_fps.tdr.
+#   - Extract a boundary representation from BL_n@node|sprocess@_CH7R4_FINELITE_fps.tdr.
 #   - Do NOT rerun SProcess.
 #
 # INPUT
-#   BL_CH7R4_FINELITE_fps.tdr
+#   BL_n@node|sprocess@_CH7R4_FINELITE_fps.tdr
 #
 # OUTPUT
 #   n@node@_bnd.tdr
@@ -25,7 +25,7 @@ Title "CMP SPAD B-track Mesh2bnd pass"
 
 IOControls {
   EnableTools
-  inputFile  = "BL_CH7R4_FINELITE_fps.tdr"
+  inputFile  = "BL_n@node|sprocess@_CH7R4_FINELITE_fps.tdr"
   outputFile = "n@node@_bnd.tdr"
   useDFISEcoordinates
   numThreads = 4
