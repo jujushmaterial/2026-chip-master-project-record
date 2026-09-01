@@ -10,14 +10,14 @@
 #   1) Read the boundary extracted by the immediately upstream Mesh2bnd node.
 #   2) Generate an SDevice-oriented electrical mesh.
 #   3) Interpolate the accepted SProcess datasets from
-#      BL_CH7R4_FINELITE_fps.tdr onto the new mesh.
+#      BL_n@node|sprocess@_CH7R4_FINELITE_fps.tdr onto the new mesh.
 #
 # INPUTS
 #   Geometry/boundary:
 #     n@node|-1@_bnd.tdr
 #
 #   SProcess field/profile source:
-#     BL_CH7R4_FINELITE_fps.tdr
+#     BL_n@node|sprocess@_CH7R4_FINELITE_fps.tdr
 #
 # OUTPUT
 #   n@node@_msh.tdr
@@ -65,7 +65,7 @@ Definitions {
   # Sentaurus Mesh interpolates those datasets onto the newly generated mesh.
   # --------------------------------------------------------------------------
   SubMesh "SM.ProcessProfile" {
-    Geofile = "BL_CH7R4_FINELITE_fps.tdr"
+    Geofile = "BL_n@node|sprocess@_CH7R4_FINELITE_fps.tdr"
   }
 
   # --------------------------------------------------------------------------
