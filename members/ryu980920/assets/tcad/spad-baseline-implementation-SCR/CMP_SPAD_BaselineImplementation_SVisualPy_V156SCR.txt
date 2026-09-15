@@ -12,6 +12,7 @@ Y_SI_SURFACE = 0.000
 Y_GRATING_SI_INTERFACE = 0.300
 
 SCR_E = 1.0e5
+SCR_SEARCH_MIN_IF = -0.300
 SCR_SEARCH_MAX_IF = 1.30
 PROFILE_DEPTH_MAX_IF = 1.70
 VT = 0.025852
@@ -507,7 +508,7 @@ else:
         z_if,
         nd,
         0.0,
-        lo=0.0,
+        lo=SCR_SEARCH_MIN_IF,
         hi=SCR_SEARCH_MAX_IF
     )
     zj_if = float(jc[0]) if jc.size else np.nan
@@ -516,7 +517,7 @@ else:
         z_if,
         ec,
         SCR_E,
-        lo=0.0,
+        lo=SCR_SEARCH_MIN_IF,
         hi=SCR_SEARCH_MAX_IF
     )
 
