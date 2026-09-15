@@ -4,20 +4,20 @@
 #=============================================================================
 # CMP FD-SOI SPAD / B track
 # SMesh pass 2: electrical device remesh + SProcess profile interpolation
-# Version 1.1, 2026-08-28
+# Version 1.2, 2026-09-15
 #
 # PURPOSE
 #   1) Read the boundary extracted by the immediately upstream Mesh2bnd node.
 #   2) Generate an SDevice-oriented electrical mesh.
 #   3) Interpolate the accepted SProcess datasets from
-#      BL_n@node|sprocess@_CH7R4_FINELITE_fps.tdr onto the new mesh.
+#      n@node|sprocess@_fps.tdr onto the new mesh.
 #
 # INPUTS
 #   Geometry/boundary:
 #     n@node|-1@_bnd.tdr
 #
 #   SProcess field/profile source:
-#     BL_n@node|sprocess@_CH7R4_FINELITE_fps.tdr
+#     n@node|sprocess@_fps.tdr
 #
 # OUTPUT
 #   n@node@_msh.tdr
@@ -43,7 +43,7 @@
 #     running the VBD/SCR SDevice calibration deck.
 #=============================================================================
 
-Title "CMP SPAD B-track SProcess-to-SDevice electrical mesh v1.1"
+Title "CMP SPAD B-track SProcess-to-SDevice electrical mesh v1.2"
 
 IOControls {
   EnableSections
@@ -65,7 +65,7 @@ Definitions {
   # Sentaurus Mesh interpolates those datasets onto the newly generated mesh.
   # --------------------------------------------------------------------------
   SubMesh "SM.ProcessProfile" {
-    Geofile = "BL_n@node|sprocess@_CH7R4_FINELITE_fps.tdr"
+    Geofile = "n@node|sprocess@_fps.tdr"
   }
 
   # --------------------------------------------------------------------------
