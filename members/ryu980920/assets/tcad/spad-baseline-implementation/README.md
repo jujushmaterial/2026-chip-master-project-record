@@ -2,7 +2,7 @@
 
 CMP SPAD B-side의 문헌 제약 기반 surrogate baseline 구현에 사용하는 Sentaurus Workbench 덱 원문 보관 위치이다.
 
-이 디렉터리의 5개 코드는 2026-08-30 기준으로 실제 17-case baseline reconstruction 계산 set에서 사용 중인 flow를 그대로 보존한다. 목적은 실제 ST foundry manufacturing recipe를 복원하는 것이 아니라, 공통 SDE/SDevice electrical baseline과 전기적으로 동등한 surrogate process baseline을 구현하는 것이다.
+이 디렉터리에는 SProcess/SNMesh/SDevice baseline reconstruction flow의 현재 실행 원문을 보관한다. SCR 최종 비교용 SVisualPy는 혼용을 막기 위해 `../spad-baseline-implementation-SCR/`에서 15.6 V 기준 파일 하나만 관리한다. 목적은 실제 ST foundry manufacturing recipe를 복원하는 것이 아니라, 공통 SDE/SDevice electrical baseline과 전기적으로 동등한 surrogate process baseline을 구현하는 것이다.
 
 ## Baseline authority
 
@@ -25,7 +25,9 @@ CMP_SPAD_BaselineImplementation_SProcess.txt
 CMP_SPAD_BaselineImplementation_SNMesh1.txt
 CMP_SPAD_BaselineImplementation_SNMesh2.txt
 CMP_SPAD_BaselineImplementation_SDevice.txt
-CMP_SPAD_BaselineImplementation_SVisualPy.txt
+
+# SCR 최종 비교용 SVisualPy
+../spad-baseline-implementation-SCR/CMP_SPAD_BaselineImplementation_SVisualPy_V156SCR.txt
 ```
 
 ### CMP_SPAD_BaselineImplementation_SProcess.txt
@@ -144,35 +146,20 @@ VBD는 ionization-integral criterion을 이용해 평가한다.
 
 `BreakAtIonIntegral` 조건을 사용하므로 candidate의 breakdown이 특정 snapshot bias보다 먼저 발생하면 그 이후 TDR은 생성되지 않을 수 있다.
 
-### CMP_SPAD_BaselineImplementation_SVisualPy.txt
+### SCR 최종 비교용 SVisualPy
 
-SDevice 결과에서 baseline-calibration metric을 자동 추출하여 Workbench DOE dashboard로 전달하는 SVisualPy script이다.
+현재 baseline reconstruction의 공식 SCR 비교는 `../spad-baseline-implementation-SCR/CMP_SPAD_BaselineImplementation_SVisualPy_V156SCR.txt` 하나만 사용한다.
 
-현재 script는 15.0 V snapshot인 `V150_des.tdr`을 diagnostic static state로 사용한다.
+- 평가 bias: **15.6 V**
+- 입력 snapshot: `V156_des.tdr`
+- SCR 정의: center cutline에서 net-doping zero crossing을 junction으로 잡고, junction 양쪽의 `|E| = 1.0e5 V/cm` crossing을 SCR boundary로 사용
+- project coordinate: `z_if = raw_y - 0.300 um`
+- SCR crossing 검색범위: **-0.300 ~ +1.30 um**
+  - raw coordinate로는 **0.000 ~ 1.600 um**
+  - 즉 bulk-Si physical surface부터 검색
 
-주요 추출 항목:
+과거의 15.0 V `V150` SVisualPy는 초기 candidate에서 위치 이동을 임시 확인하기 위한 diagnostic 파일이었고, SDE baseline과의 최종 동일-bias 비교에 부적합하므로 current asset에서 삭제하였다.
 
-- `VBD_V`
-- `SCR_center_nm`
-- `SCR_width_nm`
-- `Aval_peak_nm`
-- `Ecenter_kVpcm`
-- `Eperiph_kVpcm`
-- `R_E`
-- `SCR_OK`
-
-VBD는 SDevice current plot의 `PhiElectron` / `PhiHole` ionization-integral crossing으로 추출한다.
-
-SCR은 center radial cutline에서 다음 정보를 이용해 계산한다.
-
-- net-doping zero crossing을 이용한 junction 위치
-- `|E| = 1.0e5 V/cm` crossing
-- junction을 사이에 둔 두 electric-field crossing을 이용한 SCR boundary
-- 두 boundary의 midpoint를 SCR center로 정의
-
-또한 center/peripheral electric-field maximum과 avalanche-generation peak 위치를 함께 추출한다.
-
-현재 `V150` 기반 SCR 결과는 candidate의 SCR 이동 방향을 확인하기 위한 diagnostic metric이다. 공통 baseline의 최종 15.6 V SCR과 직접 동일 조건 비교한 값으로 해석하지 않는다.
 
 ## SWB relationship
 
@@ -234,17 +221,21 @@ baseline candidate는 VBD 하나만으로 선정하지 않고 다음 항목을 �
 
 PEB, dark current, ATP 및 temperature robustness는 baseline candidate 선정 기준으로 사용하지 않으며, surrogate baseline freeze 이후 B-track 본 연구에서 평가한다.
 
-## Known diagnostic limitations
+## Current SCR comparison rule
 
-- `V150` SCR extraction은 15.0 V TDR이 존재해야 한다.
-- candidate의 `VBD < 15.0 V`이면 `BreakAtIonIntegral`에 의해 V150 생성 전에 계산이 종료될 수 있다.
-- 이 경우 `SCR_OK=0` 또는 SCR metric이 `NA/X`로 나타날 수 있으며, 이를 SCR이 물리적으로 사라진 것으로 해석하지 않는다.
+- SDE baseline과 SProcess candidate의 SCR은 **동일하게 15.6 V**에서 비교한다.
+- candidate가 `VBD < 15.6 V`라 `V156_des.tdr`이 생성되지 않으면 SCR metric은 `NA` / `SCR_OK=0`으로 남긴다.
+- 이 경우 15.0 V SCR로 대체하지 않는다.
+- `z_if=0`은 physical Si surface가 아니라 raw y=0.300 um의 common anchor이므로, p-side SCR boundary가 약간 음수가 될 수 있다.
+- 따라서 SCR crossing 검색은 `z_if=-0.300~+1.30 um`에서 수행한다.
+- `SCR_E=1.0e5 V/cm`, junction 정의, VBD extraction physics는 변경하지 않았다.
 - 현재 FINE-Lite mesh 결과는 calibration용이며 최종 freeze 결과가 아니다.
 - implant/anneal parameter는 surrogate process parameter이며 실제 ST foundry recipe로 주장하지 않는다.
 
+
 ## Source integrity
 
-이 디렉터리의 5개 코드는 2026-08-30에 현재 17-case 계산 set에서 실제 사용 중인 파일로 직접 제공된 원문을 기준으로 등록하였다. 과거 SProcess/SNMesh/SDevice/SVisualPy 버전을 혼합하지 않는다.
+이 디렉터리는 current SProcess/SNMesh/SDevice baseline implementation 원문을 보관한다. 과거 15.0 V SCR diagnostic SVisualPy는 15.6 V common-baseline 비교와의 혼용을 막기 위해 삭제했으며, 현재 SCR extractor의 authoritative copy는 `../spad-baseline-implementation-SCR/`의 V156 파일이다.
 
 Git blob SHA:
 
@@ -253,7 +244,6 @@ CMP_SPAD_BaselineImplementation_SProcess.txt   ba126e753e8b51050b0cb5332e17ae8a0
 CMP_SPAD_BaselineImplementation_SNMesh1.txt    4e081d0b56a60d74c3a0255027d0bdefd087391e
 CMP_SPAD_BaselineImplementation_SNMesh2.txt    4be30f288114d6bea71197c108d387c8c0ba0db1
 CMP_SPAD_BaselineImplementation_SDevice.txt    9fc75e10aa88d212203c354b7fc49e02bb1cb67e
-CMP_SPAD_BaselineImplementation_SVisualPy.txt  490e14a1b65374ea29c4b94adb998877ab008bee
 ```
 
 ## Notes
