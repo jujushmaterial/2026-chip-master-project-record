@@ -2,7 +2,7 @@
 
 CMP SPAD B-side의 문헌 제약 기반 surrogate baseline 구현에 사용하는 Sentaurus Workbench 덱 원문 보관 위치이다.
 
-이 디렉터리에는 SProcess/SNMesh/SDevice baseline reconstruction flow의 현재 실행 원문을 보관한다. SCR 최종 비교용 SVisualPy는 혼용을 막기 위해 `../spad-baseline-implementation-SCR/`에서 15.6 V 기준 파일 하나만 관리한다. 목적은 실제 ST foundry manufacturing recipe를 복원하는 것이 아니라, 공통 SDE/SDevice electrical baseline과 전기적으로 동등한 surrogate process baseline을 구현하는 것이다.
+이 디렉터리에는 SProcess/SNMesh/SDevice/SVisualPy baseline reconstruction flow의 현재 실행 원문을 함께 보관한다. SCR 최종 비교용 SVisualPy도 이 디렉터리에서 15.6 V 기준 파일 하나만 관리한다. 목적은 실제 ST foundry manufacturing recipe를 복원하는 것이 아니라, 공통 SDE/SDevice electrical baseline과 전기적으로 동등한 surrogate process baseline을 구현하는 것이다.
 
 ## Baseline authority
 
@@ -26,8 +26,7 @@ CMP_SPAD_BaselineImplementation_SNMesh1.txt
 CMP_SPAD_BaselineImplementation_SNMesh2.txt
 CMP_SPAD_BaselineImplementation_SDevice.txt
 
-# SCR 최종 비교용 SVisualPy
-../spad-baseline-implementation-SCR/CMP_SPAD_BaselineImplementation_SVisualPy_V156SCR.txt
+CMP_SPAD_BaselineImplementation_SVisualPy_V156SCR.txt
 ```
 
 ### CMP_SPAD_BaselineImplementation_SProcess.txt
@@ -158,7 +157,7 @@ VBD는 ionization-integral criterion을 이용해 평가한다.
 
 ### SCR 최종 비교용 SVisualPy
 
-현재 baseline reconstruction의 공식 SCR 비교는 `../spad-baseline-implementation-SCR/CMP_SPAD_BaselineImplementation_SVisualPy_V156SCR.txt` 하나만 사용한다.
+현재 baseline reconstruction의 공식 SCR 비교는 같은 디렉터리의 `CMP_SPAD_BaselineImplementation_SVisualPy_V156SCR.txt` 하나만 사용한다.
 
 - 평가 bias: **15.6 V**
 - 입력 snapshot: `V156_des.tdr`
@@ -245,7 +244,7 @@ PEB, dark current, ATP 및 temperature robustness는 baseline candidate 선정 �
 
 ## Source integrity
 
-이 디렉터리는 current SProcess/SNMesh/SDevice baseline implementation 원문을 보관한다. 과거 15.0 V SCR diagnostic SVisualPy는 15.6 V common-baseline 비교와의 혼용을 막기 위해 삭제했으며, 현재 SCR extractor의 authoritative copy는 `../spad-baseline-implementation-SCR/`의 V156 파일이다.
+이 디렉터리는 current SProcess/SNMesh/SDevice/SVisualPy baseline implementation 원문을 보관한다. 과거 15.0 V SCR diagnostic SVisualPy는 15.6 V common-baseline 비교와의 혼용을 막기 위해 삭제했으며, 현재 SCR extractor의 authoritative copy는 이 디렉터리의 `CMP_SPAD_BaselineImplementation_SVisualPy_V156SCR.txt`이다. 별도 `spad-baseline-implementation-SCR` 디렉터리는 중복 SDevice와 분리 관리 필요성이 없어 제거하였다.
 
 Git blob SHA:
 
@@ -254,6 +253,7 @@ CMP_SPAD_BaselineImplementation_SProcess.txt   1bcef61e880ebcdb1b8b6af8962220679
 CMP_SPAD_BaselineImplementation_SNMesh1.txt    521b7df15dadb259b157b3f8c50c5c893069cd8a
 CMP_SPAD_BaselineImplementation_SNMesh2.txt    face33ae20d1efc870baf6a462eebc6f10acf04d
 CMP_SPAD_BaselineImplementation_SDevice.txt    9fc75e10aa88d212203c354b7fc49e02bb1cb67e
+CMP_SPAD_BaselineImplementation_SVisualPy_V156SCR.txt  fa0dfebdc2b80cdcf529efebcbb74daf7e567ead
 ```
 
 ## Notes
