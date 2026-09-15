@@ -102,9 +102,14 @@ SCR_OK
 
 ## Source integrity
 
-업로드된 두 코드는 2026-09-02 대화에서 사용자가 실행에 사용할 수 있도록 정리한 주석 제거 실행 원문을 그대로 등록했다.
+현재 authoritative pair는 아래 두 파일이다.
+
+- SDevice V156SCR: 기존 physics / bias ramp / breakdown 설정 유지
+- SVisualPy V156SCR: 2026-09-15에 SCR crossing search lower bound만 bulk-Si surface까지 확장
 
 ```text
 CMP_SPAD_BaselineImplementation_SDevice_V156SCR.txt    b1f2680e10bf3390f4cb55639eca8069d664674a
-CMP_SPAD_BaselineImplementation_SVisualPy_V156SCR.txt  bf889e336beeb0d659579c99076b3f0cce921729
+CMP_SPAD_BaselineImplementation_SVisualPy_V156SCR.txt  fa0dfebdc2b80cdcf529efebcbb74daf7e567ead
 ```
+
+과거 15.0 V diagnostic SVisualPy는 current asset에서 삭제했으며, 공식 SCR comparison에는 사용하지 않는다.
