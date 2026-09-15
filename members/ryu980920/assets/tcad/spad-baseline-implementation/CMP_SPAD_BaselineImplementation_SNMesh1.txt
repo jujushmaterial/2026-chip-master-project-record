@@ -3,15 +3,15 @@
 #=============================================================================
 # CMP FD-SOI SPAD / B track
 # SMesh pass 1: extract boundary from accepted SProcess mesh
-# Version 1.1, 2026-08-28
+# Version 1.2, 2026-09-15
 #
 # PURPOSE
 #   - Reuse the already completed SProcess result.
-#   - Extract a boundary representation from BL_n@node|sprocess@_CH7R4_FINELITE_fps.tdr.
+#   - Extract a boundary representation from n@node|sprocess@_fps.tdr.
 #   - Do NOT rerun SProcess.
 #
 # INPUT
-#   BL_n@node|sprocess@_CH7R4_FINELITE_fps.tdr
+#   n@node|sprocess@_fps.tdr
 #
 # OUTPUT
 #   n@node@_bnd.tdr
@@ -25,7 +25,7 @@ Title "CMP SPAD B-track Mesh2bnd pass"
 
 IOControls {
   EnableTools
-  inputFile  = "BL_n@node|sprocess@_CH7R4_FINELITE_fps.tdr"
+  inputFile  = "n@node|sprocess@_fps.tdr"
   outputFile = "n@node@_bnd.tdr"
   useDFISEcoordinates
   numThreads = 4
