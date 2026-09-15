@@ -1,6 +1,16 @@
 #setdep @node|-1@
+#setdep @node|sde@
 
 # CMP SPAD diagnostic + ATP SVisualPy v3.3
+#
+# SDE-baseline PLX comparison patch v3:
+#   - keeps the original v3.3 VBD/SCR/field/ATP workflow unchanged,
+#   - reads n@node|sde@_msh.tdr directly,
+#   - creates an explicit 2D SDE plot before cutlines (T-2022.03 safe path),
+#   - keeps legacy/reference cuts at r=0 um and r=13 um,
+#   - ADDS r=4.6875 um as the central-active-region PW/DNW comparison cut,
+#   - shifts the SDE Y coordinate so bulk-Si surface = 0 um,
+#   - exports all three active-doping profiles as PLX.
 #
 # Keeps the v3.1 VBD/SCR/field calculations and DOE names unchanged.
 # ATP fix for Sentaurus Visual T-2022.03:
@@ -19,6 +29,7 @@ import numpy as np
 
 VIS_NODE = @node@
 SNODE = @node|-1@
+DNODE = @node|sde@
 
 CENTER_R = 4.6875
 EDGE_R = 12.50
@@ -38,6 +49,7 @@ ATP_RADIAL_SAMPLES = 101
 
 IV_FILE = f"n{SNODE}_des.plt"
 TDR_FILE = f"n{SNODE}_V156_des.tdr"
+SDE_BASELINE_TDR = f"n{DNODE}_msh.tdr"
 
 PREFIX = f"n{VIS_NODE}_stage1_py"
 METRICS_FILE = f"{PREFIX}_metrics.txt"
@@ -47,6 +59,12 @@ PERIPH_CSV = f"{PREFIX}_peripheral_profile.csv"
 ATP_MAP_CSV = f"{PREFIX}_ATP_map.csv"
 ATP_CENTER_CSV = f"{PREFIX}_ATP_center_profile.csv"
 ATP_PERIPH_CSV = f"{PREFIX}_ATP_peripheral_profile.csv"
+SDE_R0_CSV = f"{PREFIX}_SDE_baseline_r0_profile.csv"
+SDE_RCENTER_CSV = f"{PREFIX}_SDE_baseline_r4p6875_profile.csv"
+SDE_R13_CSV = f"{PREFIX}_SDE_baseline_r13_profile.csv"
+SDE_R0_PLX = f"{PREFIX}_SDE_baseline_r0.plx"
+SDE_RCENTER_PLX = f"{PREFIX}_SDE_baseline_r4p6875.plx"
+SDE_R13_PLX = f"{PREFIX}_SDE_baseline_r13.plx"
 
 np.set_printoptions(precision=8, suppress=False)
 
@@ -54,6 +72,7 @@ print(f"SVISUALPY_STAGE1: IV_FILE={IV_FILE}")
 print(f"SVISUALPY_STAGE1: TDR_FILE={TDR_FILE}")
 print(f"SVISUALPY_STAGE1: ATP_TARGET_VEX={ATP_TARGET_VEX}")
 print(f"SVISUALPY_STAGE1: ATP_RADIAL_SAMPLES={ATP_RADIAL_SAMPLES}")
+print(f"SVISUALPY_STAGE1: SDE_BASELINE_TDR={SDE_BASELINE_TDR}")
 
 
 def pickvar(dataset, patterns):
@@ -356,6 +375,332 @@ def load_csv_plot_dataset(filename, name):
     return name
 
 
+def sde_safe_list_variables(dataset):
+    try:
+        return list(
+            sv.list_variables(
+                dataset=dataset
+            )
+        )
+    except Exception as exc:
+        print(
+            "SVISUALPY_STAGE1: SDE_BASELINE_LIST_VARIABLES_WARNING "
+            f"dataset={dataset}: {exc}"
+        )
+        return []
+
+
+def sde_probe_exact_variable(dataset, candidates):
+    names = sde_safe_list_variables(dataset)
+
+    for candidate in candidates:
+        for name in names:
+            if name.lower() == candidate.lower():
+                return name
+
+    # T-2022.03 can expose a field to get_variable_data even when it is not
+    # returned by list_variables. Probe exact expected names before failing.
+    for candidate in candidates:
+        try:
+            arr = get_data(
+                dataset,
+                candidate
+            )
+            if arr.size > 0:
+                return candidate
+        except Exception:
+            pass
+
+    return None
+
+
+def sde_pick_cut_variable(dataset, patterns, exact_candidates):
+    names = sde_safe_list_variables(dataset)
+
+    for pat in patterns:
+        p = pat.lower()
+        for name in names:
+            if fnmatch.fnmatch(
+                name.lower(),
+                p
+            ):
+                return name
+
+    return sde_probe_exact_variable(
+        dataset,
+        exact_candidates
+    )
+
+
+def create_sde_cut(source_plot, radius, name):
+    # Follow the same T-2022.03-safe strategy already used by the ATP block:
+    # create the cutline from an explicit 2D plot rather than directly from
+    # the raw TDR dataset.
+    try:
+        return sv.create_cutline(
+            "x",
+            at=radius,
+            plot=source_plot,
+            name=name
+        )
+    except TypeError:
+        return sv.create_cutline(
+            type="x",
+            at=radius,
+            plot=source_plot,
+            name=name
+        )
+
+
+def export_sde_baseline_doping_plx():
+    """
+    Export active analytic SDE baseline doping at three radial positions.
+
+    r=0 um:
+        geometric axis / anode-overlap diagnostic (legacy/reference)
+
+    r=CENTER_R=4.6875 um:
+        central-active-region PW/DNW comparison cut
+        (chosen to avoid the r=0 P+ anode overlap)
+
+    r=13 um:
+        peripheral comparison cut
+
+    SDE right-half coordinates:
+        X = radius [um]
+        Y = depth [um]
+        bulk-Si surface Y = -0.300 um
+
+    Comparison coordinate:
+        DepthFromSiSurface_um = Y - Y_SI_SURFACE
+
+    Direct comparison quantities:
+        SDE BoronActiveConcentration      <-> SProcess BActive
+        SDE PhosphorusActiveConcentration <-> SProcess PActive
+
+    The analytic SDE baseline does not provide BTotal/PTotal, therefore this
+    block intentionally exports active concentrations only.
+    """
+    if not os.path.isfile(SDE_BASELINE_TDR):
+        raise RuntimeError(
+            f"SDE baseline mesh not found: {SDE_BASELINE_TDR}"
+        )
+
+    try:
+        sv.load_file(
+            SDE_BASELINE_TDR,
+            name="SDE_BASELINE",
+            alldata=True
+        )
+        print(
+            "SVISUALPY_STAGE1: "
+            "SDE_BASELINE_LOAD_ALLDATA_OK"
+        )
+    except TypeError as exc:
+        print(
+            "SVISUALPY_STAGE1: "
+            "SDE_BASELINE_LOAD_ALLDATA_KEYWORD_UNSUPPORTED "
+            f"{exc}"
+        )
+        sv.load_file(
+            SDE_BASELINE_TDR,
+            name="SDE_BASELINE"
+        )
+
+    # Important for Sentaurus Visual T-2022.03: create a real 2D plot first.
+    # This mirrors the already-working ATP v3.3 workflow.
+    sde_plot = sv.create_plot(
+        name="Plot_SDEBaselineSource",
+        dataset="SDE_BASELINE"
+    )
+    print(
+        "SVISUALPY_STAGE1: "
+        f"SDE_BASELINE_2D_PLOT={sde_plot}"
+    )
+
+    cases = [
+        (0.0, "R0", SDE_R0_CSV, SDE_R0_PLX),
+        (CENTER_R, "R4P6875", SDE_RCENTER_CSV, SDE_RCENTER_PLX),
+        (13.0, "R13", SDE_R13_CSV, SDE_R13_PLX),
+    ]
+
+    for radius_um, tag, csv_file, plx_file in cases:
+        cut_name = f"SDE_BASELINE_{tag}"
+        cut = create_sde_cut(
+            sde_plot,
+            radius_um,
+            cut_name
+        )
+
+        names = sde_safe_list_variables(cut)
+        print(
+            "SVISUALPY_STAGE1: "
+            f"SDE_BASELINE_CUT_DATASET[{tag}]="
+            f"{cut}"
+        )
+        print(
+            "SVISUALPY_STAGE1: "
+            f"SDE_BASELINE_CUT_VARIABLES[{tag}]="
+            f"{names}"
+        )
+
+        yname = sde_pick_cut_variable(
+            cut,
+            ["Y", "y"],
+            ["Y", "y"]
+        )
+        bname = sde_pick_cut_variable(
+            cut,
+            [
+                "BoronActiveConcentration",
+                "*BoronActiveConcentration*",
+                "*BoronActive*",
+            ],
+            ["BoronActiveConcentration"]
+        )
+        pname = sde_pick_cut_variable(
+            cut,
+            [
+                "PhosphorusActiveConcentration",
+                "*PhosphorusActiveConcentration*",
+                "*PhosphorusActive*",
+            ],
+            ["PhosphorusActiveConcentration"]
+        )
+
+        if yname is None:
+            raise RuntimeError(
+                f"{cut_name}: depth coordinate Y not found; "
+                f"variables={names}"
+            )
+        if bname is None or pname is None:
+            raise RuntimeError(
+                f"{cut_name}: active B/P variables not found "
+                f"(B={bname}, P={pname}); variables={names}"
+            )
+
+        y_raw = get_data(
+            cut,
+            yname
+        )
+        bactive = get_data(
+            cut,
+            bname
+        )
+        pactive = get_data(
+            cut,
+            pname
+        )
+
+        if not (
+            len(y_raw) == len(bactive) == len(pactive)
+        ):
+            raise RuntimeError(
+                f"{cut_name}: length mismatch "
+                f"Y={len(y_raw)} B={len(bactive)} P={len(pactive)}"
+            )
+
+        depth_surface = y_raw - Y_SI_SURFACE
+        depth_surface, bactive, pactive = sort_unique_many(
+            depth_surface,
+            bactive,
+            pactive
+        )
+
+        # SProcess depth coordinate starts at the bulk-Si surface (0 um).
+        keep = depth_surface >= -1.0e-12
+        depth_surface = depth_surface[keep]
+        bactive = bactive[keep]
+        pactive = pactive[keep]
+
+        if depth_surface.size == 0:
+            raise RuntimeError(
+                f"{cut_name}: no valid profile points at/under Si surface"
+            )
+
+        save_csv(
+            csv_file,
+            {
+                "DepthFromSiSurface_um": depth_surface,
+                "BActive": bactive,
+                "PActive": pactive,
+            }
+        )
+
+        proc_name = f"SDE_BASELINE_PROC_{tag}"
+        load_csv_plot_dataset(
+            csv_file,
+            proc_name
+        )
+
+        plot_name = f"Plot_SDE_BaselineDoping_{tag}"
+        plot = sv.create_plot(
+            name=plot_name,
+            xy=True
+        )
+
+        sv.create_curve(
+            name=f"Curve_SDE_BActive_{tag}",
+            plot=plot,
+            dataset=proc_name,
+            axisX="DepthFromSiSurface_um",
+            axisY="BActive"
+        )
+        sv.create_curve(
+            name=f"Curve_SDE_PActive_{tag}",
+            plot=plot,
+            dataset=proc_name,
+            axisX="DepthFromSiSurface_um",
+            axisY="PActive"
+        )
+
+        sv.set_plot_prop(
+            plot=plot,
+            show_grid=True,
+            show_legend=True,
+            title=(
+                f"SDE Baseline Active Doping at "
+                f"r={radius_um:g} um"
+            )
+        )
+        sv.set_axis_prop(
+            plot=plot,
+            axis="x",
+            title="Depth from Si Surface [um]"
+        )
+        sv.set_axis_prop(
+            plot=plot,
+            axis="y",
+            title="Active Dopant Concentration [cm^-3]",
+            type="log"
+        )
+
+        sv.export_curves(
+            filename=plx_file,
+            plot=plot,
+            format="plx",
+            overwrite=True
+        )
+
+        print(
+            "SVISUALPY_STAGE1: "
+            f"SDE_BASELINE_PLX[{tag}]={plx_file} "
+            f"r={radius_um:g}um "
+            f"Y={yname} B={bname} P={pname}"
+        )
+
+
+# This export is diagnostic-only. A PLX-export failure must not suppress the
+# existing v3.3 VBD/SCR/field/ATP workflow.
+try:
+    export_sde_baseline_doping_plx()
+except Exception as exc:
+    print(
+        "SVISUALPY_STAGE1: SDE_BASELINE_PLX_WARNING "
+        f"{type(exc).__name__}: {exc}"
+    )
+
+
 def snapshot_bias(path):
     name = os.path.basename(path)
     match = regex.match(rf"n{SNODE}_V(\d{{3}})_des.tdr$", name)
@@ -652,8 +997,7 @@ else:
         z_if,
         ec,
         SCR_E,
-        lo=0.0,
-        hi=SCR_SEARCH_MAX_IF
+        lo=0.0,        hi=SCR_SEARCH_MAX_IF
     )
 
     zsp_if = np.nan
@@ -1652,8 +1996,7 @@ else:
                 atp_peak = float(
                     pj_f[peak_index]
                 )
-                atp_peak_r_um = float(
-                    r_f[peak_index]
+                atp_peak_r_um = float(                    r_f[peak_index]
                 )
                 atp_peak_z_nm = float(
                     z_f[peak_index] *
