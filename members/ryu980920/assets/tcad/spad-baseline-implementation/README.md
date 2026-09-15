@@ -75,9 +75,9 @@ RTA_t
 
 SProcess mesh는 현재 17-case 반복 계산을 위한 FINE-Lite calibration mesh이다. 최종 surrogate baseline freeze 전에는 true-FINE 조건의 재검증이 필요하다.
 
-### Output-name compatibility note
+### Output-name compatibility
 
-현재 SProcess final TDR basename은 짧은 이름인 `n@node@`로 저장되어 `n<node>_fps.tdr`이 생성된다. 기존 SNMesh1/SNMesh2 command는 legacy `BL_n@node|sprocess@_CH7R4_FINELITE_fps.tdr`를 참조하고 있다. 이번 갱신에서는 요청한 동일-role SProcess/SVisualPy 파일만 덮어썼기 때문에 SNMesh command는 변경하지 않았다. revised SProcess를 downstream SNMesh와 바로 연결할 때는 SNMesh 입력 basename 정합화가 별도로 필요하다.
+SProcess final TDR basename은 짧은 이름인 `n@node@`로 저장되어 `n<node>_fps.tdr`이 생성된다. SNMesh1과 SNMesh2도 이에 맞춰 `n@node|sprocess@_fps.tdr`를 각각 geometry input 및 SubMesh profile source로 사용하도록 정합화했다. 따라서 현재 SProcess -> SNMesh1 -> SNMesh2 연결에서 legacy `BL_*_CH7R4_FINELITE_fps.tdr` 이름은 더 이상 사용하지 않는다.
 
 ### CMP_SPAD_BaselineImplementation_SNMesh1.txt
 
@@ -86,7 +86,7 @@ SProcess 결과에서 device remesh에 사용할 geometry boundary를 추출하�
 주요 역할:
 
 - upstream SProcess node에 dependency 설정
-- `BL_CH7R4_FINELITE_fps.tdr`을 입력으로 사용
+- upstream SProcess의 `n@node|sprocess@_fps.tdr`을 입력으로 사용
 - `Mesh2bnd` Tools operation 수행
 - `useDFISEcoordinates` 유지
 - geometry boundary인 `n@node@_bnd.tdr` 생성
@@ -100,7 +100,7 @@ SNMesh1에서 얻은 boundary에 SProcess doping/profile 데이터를 다시 map
 주요 역할:
 
 - immediately upstream SNMesh1의 `n@node|-1@_bnd.tdr`을 geometry input으로 사용
-- SProcess의 `BL_CH7R4_FINELITE_fps.tdr`을 `SubMesh` profile source로 사용
+- SProcess의 `n@node|sprocess@_fps.tdr`을 `SubMesh` profile source로 사용
 - SProcess field/profile을 새로운 device mesh에 interpolation
 - 최종 `n@node@_msh.tdr` 생성
 
@@ -251,8 +251,8 @@ Git blob SHA:
 
 ```text
 CMP_SPAD_BaselineImplementation_SProcess.txt   1bcef61e880ebcdb1b8b6af896222067953d7b1c
-CMP_SPAD_BaselineImplementation_SNMesh1.txt    4e081d0b56a60d74c3a0255027d0bdefd087391e
-CMP_SPAD_BaselineImplementation_SNMesh2.txt    4be30f288114d6bea71197c108d387c8c0ba0db1
+CMP_SPAD_BaselineImplementation_SNMesh1.txt    521b7df15dadb259b157b3f8c50c5c893069cd8a
+CMP_SPAD_BaselineImplementation_SNMesh2.txt    face33ae20d1efc870baf6a462eebc6f10acf04d
 CMP_SPAD_BaselineImplementation_SDevice.txt    9fc75e10aa88d212203c354b7fc49e02bb1cb67e
 ```
 
