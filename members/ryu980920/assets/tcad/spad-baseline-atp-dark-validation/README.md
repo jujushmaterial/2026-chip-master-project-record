@@ -58,7 +58,11 @@ CMP_SPAD_DarkCurrent_SVisualPy.txt
   - `ATP_peak`
   - `ATP_peak_r_um`
   - `ATP_peak_z_nm`
-- 기존 `r=4.6875 um`, `r=12.5 um` 값은 legacy diagnostic profile로만 유지
+- 기존 `r=4.6875 um`, `r=12.5 um` 값은 SDevice/ATP diagnostic cut으로 유지
+- SDE baseline mesh를 추가 dependency로 읽어 active doping PLX를 `r=0`, `r=4.6875 um`, `r=13 um`에서 export
+- `r=4.6875 um`은 P+ anode overlap이 있는 기하학적 축 `r=0`과 분리하여 PW/DNW process-matching에 사용하는 central-active-region cut
+- 주요 추가 출력: `n<visual-node>_stage1_py_SDE_baseline_r4p6875.plx`
+- 기존 v3.3 VBD/SCR/field/ATP 계산 및 DOE metric 이름은 변경하지 않음
 
 ### CMP_SPAD_DarkCurrent_SVisualPy.txt
 
@@ -90,7 +94,7 @@ Git blob SHA 기준 원문 일치값:
 ```text
 CMP_SPAD_Diagnostic_ATP_SDevice.txt    2b8cd60b50edc7d7404c47b1ebbfa039c3aae027
 CMP_SPAD_DarkCurrent_SDevice.txt       5227f68fa2acd6375a2dbcbadd19743e415d813d
-CMP_SPAD_Diagnostic_ATP_SVisualPy.txt  a6cd3906a1e664ac5c0bbea3b02e8f01c76ee50e
+CMP_SPAD_Diagnostic_ATP_SVisualPy.txt  e2774e11ccc15068e9a6683711e56e7d1a283670
 CMP_SPAD_DarkCurrent_SVisualPy.txt     b2f352787eede4b7a481f6acb65df5e6874b6af9
 ```
 
