@@ -43,6 +43,12 @@ B-side surrogate process baseline을 구현하는 Sentaurus Process command이�
 - well RTA 이후 local UpperSi / BOX removal 수행
 - shallow P+ anode/substrate contact implant 및 fixed short contact spike 적용
 - final PLX/TDR 및 contact 포함 SProcess structure export
+- PW/DNW profile 비교용 cut을 `r=0`, `r=4.6875 um`, `r=13 um`에서 저장
+  - common RTA 전: `n@node@_B_R_r0/r4p6/r13.plx`
+  - common RTA 후: `n@node@_A_R_r0/r4p6/r13.plx`
+  - final profile: `n@node@_F_r0/r4p6/r13.plx`
+  - `r=4.6875 um` cut은 SDE baseline과 PW/DNW active-profile을 같은 central-active-region 위치에서 비교하기 위해 추가
+- 공정 단계별 TDR snapshot을 짧은 node 기반 이름으로 저장: `SOI`, `STI`, `DNW`, `PW`, `NW`, `RTA`, `BOX`, `PP`, `SPK`, final
 
 현재 SWB Parameter로 등록된 다음 9개 값은 모두 command 내부에서 `@PARAMETER@` 형식으로 입력받는다.
 
@@ -68,6 +74,10 @@ RTA_t
 `PW_TRIM_E`는 현재 95 keV로 유지하며, baseline candidate 선정 후 SCR 위치의 fine correction이 필요할 때 dependent trim variable로 사용한다. 나머지 PW parameter도 SWB Parameter 상태를 유지하며 현재 experiment row에서 동일한 값으로 고정한다.
 
 SProcess mesh는 현재 17-case 반복 계산을 위한 FINE-Lite calibration mesh이다. 최종 surrogate baseline freeze 전에는 true-FINE 조건의 재검증이 필요하다.
+
+### Output-name compatibility note
+
+현재 SProcess final TDR basename은 짧은 이름인 `n@node@`로 저장되어 `n<node>_fps.tdr`이 생성된다. 기존 SNMesh1/SNMesh2 command는 legacy `BL_n@node|sprocess@_CH7R4_FINELITE_fps.tdr`를 참조하고 있다. 이번 갱신에서는 요청한 동일-role SProcess/SVisualPy 파일만 덮어썼기 때문에 SNMesh command는 변경하지 않았다. revised SProcess를 downstream SNMesh와 바로 연결할 때는 SNMesh 입력 basename 정합화가 별도로 필요하다.
 
 ### CMP_SPAD_BaselineImplementation_SNMesh1.txt
 
@@ -240,7 +250,7 @@ PEB, dark current, ATP 및 temperature robustness는 baseline candidate 선정 �
 Git blob SHA:
 
 ```text
-CMP_SPAD_BaselineImplementation_SProcess.txt   ba126e753e8b51050b0cb5332e17ae8a03ad827d
+CMP_SPAD_BaselineImplementation_SProcess.txt   1bcef61e880ebcdb1b8b6af896222067953d7b1c
 CMP_SPAD_BaselineImplementation_SNMesh1.txt    4e081d0b56a60d74c3a0255027d0bdefd087391e
 CMP_SPAD_BaselineImplementation_SNMesh2.txt    4be30f288114d6bea71197c108d387c8c0ba0db1
 CMP_SPAD_BaselineImplementation_SDevice.txt    9fc75e10aa88d212203c354b7fc49e02bb1cb67e
