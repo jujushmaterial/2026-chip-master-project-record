@@ -1,6 +1,20 @@
 #=============================================================================
 # CMP FD-SOI SPAD / B track
-# sproc_baseline_v0.9_SWB9_parameterized_FINELITE.txt
+# sproc_baseline_v0.11_SWB9_shortnames_stageTDR.txt
+#
+# Output naming:
+#   PLX: n@node@_B_R_r0/r4p6/r13, n@node@_A_R_r0/r4p6/r13, n@node@_F_r0/r4p6/r13
+#   TDR stage snapshots:
+#     n@node@_SOI  : initial SOI structure after init
+#     n@node@_STI  : after STI etch/fill + densification
+#     n@node@_DNW  : after DNW implant
+#     n@node@_PW   : after complete PW fixed+trim implant chain
+#     n@node@_NW   : after NW implant = before common well RTA
+#     n@node@_RTA  : after common well RTA
+#     n@node@_BOX  : after local UpperSi/BOX removal
+#     n@node@_PP   : after shallow P+ contact implants
+#     n@node@_SPK  : after fixed short P+ activation spike
+#     n@node@      : final structure with contacts for downstream SDevice
 #
 # Process-topology basis:
 #   - Preserve v0.4 geometry numbers, DNW/NW/P+ seeds, mask radii.
@@ -116,8 +130,6 @@ set IMP_TILT  7
 set IMP_ROT   0
 set IMP_MROT  4
 
-set CASE_TAG  "n@node@_CH7R4_FINELITE"
-
 # Echo resolved SWB inputs into the SProcess log for automatic audit.
 puts "=== CMP SWB RESOLVED PARAMETERS ==="
 puts "DNW_DOSE=$DNW_DOSE"
@@ -129,7 +141,6 @@ puts "PW_FIXED_FRAC=$PW_FIXED_FRAC"
 puts "PW_TOTAL_DOSE=$PW_TOTAL_DOSE"
 puts "RTA_T=$RTA_T"
 puts "RTA_t=$RTA_t"
-puts "CASE_TAG=$CASE_TAG"
 puts "==================================="
 
 
@@ -192,6 +203,10 @@ set DENS_T      1000
 set DENS_min      20
 
 set AXIS_EXT    -0.10
+
+# Common radial cut for PW/DNW profile comparison with the SDE baseline.
+# Not an SWB DOE parameter.
+set R_PROFILE_C 4.6875
 
 
 #=============================================================================
@@ -264,6 +279,9 @@ region Silicon xlo=SiTop xhi=SiBottom ylo=RAxis yhi=ROuter \
 
 init
 
+# Stage TDR: initial SOI structure.
+struct tdr=n@node@_SOI !restart !Gas
+
 mgoals on min.normal.size=3<nm> max.lateral.size=0.50<um> \
    normal.growth.ratio=1.4
 
@@ -291,7 +309,7 @@ grid remesh
 diffuse temperature=${DENS_T}<C> time=${DENS_min}<min>
 grid remesh
 
-struct tdr=BL_${CASE_TAG}_sti !restart !Gas
+struct tdr=n@node@_STI !restart !Gas
 
 
 #=============================================================================
@@ -330,6 +348,9 @@ implant Phosphorus energy=${DNW_E}<keV> dose=${DNW_DOSE}<cm-2> \
    tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree> \
    mult.rot=${IMP_MROT} mask=M_DNW
 
+# Stage TDR: DNW implant completed.
+struct tdr=n@node@_DNW !restart !Gas
+
 # PW component 1: fixed shallow Boron implant.
 implant Boron energy=${PW_FIXED_E}<keV> dose=${PW_FIXED_DOSE}<cm-2> \
    tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree> \
@@ -350,10 +371,16 @@ implant Boron energy=${PW_TRIM_E}<keV> dose=${PW_TRIM_DOSE}<cm-2> \
    tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree> \
    mult.rot=${IMP_MROT} mask=M_PW_SUB
 
+# Stage TDR: complete PW fixed+trim implant chain completed.
+struct tdr=n@node@_PW !restart !Gas
+
 # N-well cathode pickup.
 implant Phosphorus energy=${NW_E}<keV> dose=${NW_DOSE}<cm-2> \
    tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree> \
    mult.rot=${IMP_MROT} mask=M_NW
+
+# Stage TDR: all well implants completed; this is the structure before common RTA.
+struct tdr=n@node@_NW !restart !Gas
 
 
 #=============================================================================
@@ -366,14 +393,23 @@ implant Phosphorus energy=${NW_E}<keV> dose=${NW_DOSE}<cm-2> \
 #   P+ contact implants do NOT exist yet and therefore do not receive this RTA.
 SetPlxList { BTotal BActive PTotal PActive }
 
-WritePlx BL_${CASE_TAG}_well_asimpl_r0.plx  y=0.0
-WritePlx BL_${CASE_TAG}_well_asimpl_r13.plx y=13.0
+# Short PLX naming:
+#   B_R = Before common well RTA
+#   A_R = After  common well RTA
+#   r0 / r4p6 / r13 = radial cut position [um]
+WritePlx n@node@_B_R_r0.plx   y=0.0
+WritePlx n@node@_B_R_r4p6.plx y=${R_PROFILE_C}
+WritePlx n@node@_B_R_r13.plx  y=13.0
 
 diffuse temperature=${RTA_T}<C> time=${RTA_t}<s>
 grid remesh
 
-WritePlx BL_${CASE_TAG}_well_r0.plx  y=0.0
-WritePlx BL_${CASE_TAG}_well_r13.plx y=13.0
+# Stage TDR: after common well RTA.
+struct tdr=n@node@_RTA !restart !Gas
+
+WritePlx n@node@_A_R_r0.plx   y=0.0
+WritePlx n@node@_A_R_r4p6.plx y=${R_PROFILE_C}
+WritePlx n@node@_A_R_r13.plx  y=13.0
 
 
 #=============================================================================
@@ -392,7 +428,7 @@ etch Oxide   anisotropic thickness=${T_BOX_ETCH}<um> mask=M_LOCALBOX
 
 grid remesh
 
-struct tdr=BL_${CASE_TAG}_geom !restart !Gas
+struct tdr=n@node@_BOX !restart !Gas
 
 
 #=============================================================================
@@ -414,6 +450,9 @@ implant Boron energy=${PP_E}<keV> dose=${PP_DOSE}<cm-2> \
    tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree> \
    mult.rot=${IMP_MROT} mask=M_PP_SUB
 
+# Stage TDR: shallow P+ contact implants completed, before fixed spike.
+struct tdr=n@node@_PP !restart !Gas
+
 
 #=============================================================================
 # 8. Fixed short P+ contact activation
@@ -427,15 +466,20 @@ implant Boron energy=${PP_E}<keV> dose=${PP_DOSE}<cm-2> \
 diffuse temperature=${SPIKE_T}<C> time=${SPIKE_t}<s>
 grid remesh
 
+# Stage TDR: after fixed short P+ activation spike.
+struct tdr=n@node@_SPK !restart !Gas
+
 
 #=============================================================================
 # 9. Final profile diagnostics
 #=============================================================================
 # BASELINE-FREEZE RULE FOR PW MULTI-IMPLANT:
-#   Before B-track DOE begins, use the post-RTA r=0 PLX profile to fit:
+#   Before B-track DOE begins, use the post-RTA r=4.6875 um PLX profile
+#   as the primary PW/DNW process-matching cut:
 #     - PW peak concentration and near-surface level
 #     - PW tail / effective width
 #     - PW/DNW metallurgical-junction trend
+#   Keep r=0 as the geometric-axis/anode-overlap diagnostic.
 #   Then verify z_SCR in SDevice.
 #
 # Only after this calibration:
@@ -444,18 +488,24 @@ grid remesh
 #     PW_TRIM_E alone is adjusted to restore z_SCR ~= z_SCR,baseline.
 SetPlxList { BTotal BActive PTotal PActive }
 
-WritePlx BL_${CASE_TAG}_r0.plx  y=0.0
-WritePlx BL_${CASE_TAG}_r13.plx y=13.0
+# F = final profile after local BOX removal + shallow P+ implant + fixed spike.
+WritePlx n@node@_F_r0.plx   y=0.0
+WritePlx n@node@_F_r4p6.plx y=${R_PROFILE_C}
+WritePlx n@node@_F_r13.plx  y=13.0
 
 select z=BTotal
 puts "=== BTotal layers @ r=0 ==="
 layers y=0.0
+puts "=== BTotal layers @ r=4.6875 ==="
+layers y=${R_PROFILE_C}
 puts "=== BTotal layers @ r=13 ==="
 layers y=13.0
 
 select z=PTotal
 puts "=== PTotal layers @ r=0 ==="
 layers y=0.0
+puts "=== PTotal layers @ r=4.6875 ==="
+layers y=${R_PROFILE_C}
 puts "=== PTotal layers @ r=13 ==="
 layers y=13.0
 
@@ -481,4 +531,4 @@ contact list
 # 11. Final export
 #=============================================================================
 # Cylindrical interpretation is applied later in SDevice.
-struct tdr=BL_${CASE_TAG} !restart !Gas contacts
+struct tdr=n@node@ !restart !Gas contacts
