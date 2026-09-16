@@ -274,62 +274,190 @@ def load_csv_plot_dataset(filename, name):
 
 sv.load_file(IV_FILE, name="IV")
 
-vname = pickvar("IV", ["*cathode*OuterVoltage*", "*cathode*InnerVoltage*"])
-iname = pickvar("IV", ["*anode*TotalCurrent*"])
+iv_names = list(sv.list_variables(dataset="IV"))
+print("SVISUALPY_STAGE1: IV_VARIABLES_BEGIN")
+for _name in iv_names:
+    print(f"SVISUALPY_STAGE1: IV_VAR={_name}")
+print("SVISUALPY_STAGE1: IV_VARIABLES_END")
 
-if vname is None or iname is None:
-    raise RuntimeError("I-V variables not found")
+def _norm_name(name):
+    return "".join(ch.lower() for ch in str(name) if ch.isalnum())
 
-vv_raw = np.abs(get_data("IV", vname))
-ii_raw = np.abs(get_data("IV", iname))
+def pickvar_tokens(dataset, required_tokens, preferred_tokens=None):
+    names = list(sv.list_variables(dataset=dataset))
+    req = [_norm_name(x) for x in required_tokens]
+    pref = [_norm_name(x) for x in (preferred_tokens or [])]
 
-pename = pickvar("IV", ["PhiElectron", "*PhiElectron*"])
-phname = pickvar("IV", ["PhiHole", "*PhiHole*"])
+    candidates = []
+    for name in names:
+        nn = _norm_name(name)
+        if all(tok in nn for tok in req):
+            score = sum(tok in nn for tok in pref)
+            candidates.append((score, len(nn), name))
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda x: (-x[0], x[1], str(x[2])))
+    return candidates[0][2]
+
+vname = pickvar(
+    "IV",
+    [
+        "*cathode*OuterVoltage*",
+        "*cathode*InnerVoltage*",
+        "*cathode*Voltage*",
+        "*cathode*Potential*",
+    ]
+)
+if vname is None:
+    vname = pickvar_tokens(
+        "IV",
+        ["cathode", "voltage"],
+        ["outer", "inner"]
+    )
+
+iname = pickvar(
+    "IV",
+    [
+        "*anode*TotalCurrent*",
+        "*anode*Current*",
+        "*anode*ConductionCurrent*",
+    ]
+)
+if iname is None:
+    iname = pickvar_tokens(
+        "IV",
+        ["anode", "current"],
+        ["total", "conduction"]
+    )
+if iname is None:
+    iname = pickvar_tokens(
+        "IV",
+        ["cathode", "current"],
+        ["total", "conduction"]
+    )
+
+pename = pickvar(
+    "IV",
+    [
+        "PhiElectron",
+        "*PhiElectron*",
+        "*Electron*Ion*Integral*",
+        "*Electron*Integral*",
+    ]
+)
+if pename is None:
+    pename = pickvar_tokens(
+        "IV",
+        ["electron", "integral"],
+        ["phi", "ion"]
+    )
+
+phname = pickvar(
+    "IV",
+    [
+        "PhiHole",
+        "*PhiHole*",
+        "*Hole*Ion*Integral*",
+        "*Hole*Integral*",
+    ]
+)
+if phname is None:
+    phname = pickvar_tokens(
+        "IV",
+        ["hole", "integral"],
+        ["phi", "ion"]
+    )
+
+print(f"SVISUALPY_STAGE1: IV_SELECTED voltage={vname}")
+print(f"SVISUALPY_STAGE1: IV_SELECTED current={iname}")
+print(f"SVISUALPY_STAGE1: IV_SELECTED phi_e={pename}")
+print(f"SVISUALPY_STAGE1: IV_SELECTED phi_h={phname}")
+
+vv_raw = None
+ii_raw = None
+pe_raw = None
+ph_raw = None
+
+if vname is not None:
+    vv_raw = np.abs(get_data("IV", vname))
+
+if iname is not None:
+    ii_raw = np.abs(get_data("IV", iname))
+
+if pename is not None:
+    pe_raw = get_data("IV", pename)
+
+if phname is not None:
+    ph_raw = get_data("IV", phname)
 
 vbd = np.nan
-iv_columns = {
-    "ReverseBias_V": vv_raw,
-    "AbsAnodeCurrent_A": ii_raw,
-}
+iv_columns = {}
 
-if pename is not None and phname is not None:
-    pe_raw = get_data("IV", pename)
-    ph_raw = get_data("IV", phname)
+if vv_raw is not None:
+    iv_columns["ReverseBias_V"] = vv_raw
+
+if ii_raw is not None:
+    iv_columns["AbsTerminalCurrent_A"] = ii_raw
+
+if vv_raw is not None and pe_raw is not None and ph_raw is not None:
     vbd = vbd_from_phi(vv_raw, pe_raw, ph_raw)
-
     iv_columns["PhiElectron"] = pe_raw
     iv_columns["PhiHole"] = ph_raw
-
-save_csv(IV_CSV, iv_columns)
-load_csv_plot_dataset(IV_CSV, "IVPROC")
-
-def plot_reverse_iv():
-    p = sv.create_plot(name="Plot_ReverseIV", xy=True)
-    sv.create_curve(
-        name="Curve_ReverseIV",
-        plot=p,
-        dataset="IVPROC",
-        axisX="ReverseBias_V",
-        axisY="AbsAnodeCurrent_A"
+else:
+    print(
+        "SVISUALPY_STAGE1: IV/VBD_WARNING: "
+        "voltage or ionization-integral variable was not found; "
+        "VBD will remain NA, but V156 SCR extraction will continue."
     )
-    sv.set_plot_prop(
-        plot=p,
-        show_grid=True,
-        show_legend=True,
-        title="SPAD Reverse I-V"
-    )
-    sv.set_axis_prop(plot=p, axis="x", title="Reverse Bias [V]")
-    sv.set_axis_prop(
-        plot=p,
-        axis="y",
-        title="|I_anode| [A]",
-        type="log"
-    )
-    return p
 
-safe_plot(plot_reverse_iv, "ReverseIV")
+if len(iv_columns) > 0:
+    lengths = [len(np.asarray(v)) for v in iv_columns.values()]
+    if len(set(lengths)) == 1:
+        save_csv(IV_CSV, iv_columns)
+        load_csv_plot_dataset(IV_CSV, "IVPROC")
+    else:
+        print(
+            f"SVISUALPY_STAGE1: IV_CSV_WARNING: column lengths differ {lengths}; "
+            "IV CSV/plot skipped."
+        )
+        iv_columns = {}
+else:
+    print("SVISUALPY_STAGE1: IV_CSV_WARNING: no usable IV variables; IV CSV/plot skipped.")
 
-if "PhiElectron" in iv_columns and "PhiHole" in iv_columns:
+if "ReverseBias_V" in iv_columns and "AbsTerminalCurrent_A" in iv_columns:
+    def plot_reverse_iv():
+        p = sv.create_plot(name="Plot_ReverseIV", xy=True)
+        sv.create_curve(
+            name="Curve_ReverseIV",
+            plot=p,
+            dataset="IVPROC",
+            axisX="ReverseBias_V",
+            axisY="AbsTerminalCurrent_A"
+        )
+        sv.set_plot_prop(
+            plot=p,
+            show_grid=True,
+            show_legend=True,
+            title="SPAD Reverse I-V"
+        )
+        sv.set_axis_prop(plot=p, axis="x", title="Reverse Bias [V]")
+        sv.set_axis_prop(
+            plot=p,
+            axis="y",
+            title="|I_terminal| [A]",
+            type="log"
+        )
+        return p
+
+    safe_plot(plot_reverse_iv, "ReverseIV")
+
+if (
+    "ReverseBias_V" in iv_columns and
+    "PhiElectron" in iv_columns and
+    "PhiHole" in iv_columns
+):
     def plot_phi():
         p = sv.create_plot(name="Plot_Ionization", xy=True)
         sv.create_curve(
