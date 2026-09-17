@@ -1,0 +1,92 @@
+#setdep @node|snmesh@
+
+# =============================================================================
+# CMP SPAD A - Proposed Annular Optical Pattern 2D EMW v1.0
+# Sentaurus Device Electromagnetic Wave Solver T-2022.03
+#
+# UPSTREAM DESIGN PARAMETER
+#   RadialPitch is applied only in SDE.  The dependent annular Si ring width is
+#   automatically calculated there to maintain intentional-pattern FF=15%.
+#
+# FIXED FOR EVERY SPLIT
+#   - 940 nm
+#   - normal incidence
+#   - TE polarization
+#   - 1 W/cm^2 source normalization
+#   - same wavelength-dependent CRI database convention as frozen Reference
+#   - X=PeriodicOblique, Y=CPML
+#   - same detector settings
+#
+# INTERPRETATION
+#   This is the diametric/radial 2D screening model. It is NOT an exact 3D
+#   concentric-annular result.  Final A claims require 3D EMW for selected
+#   candidates and comparison against Reference and Gao Square under matched
+#   optical conditions.
+# =============================================================================
+
+Globals {
+  GridFile = "n@node|snmesh@_msh.tdr"
+  ResultFile = "n@node@_eml.plt"
+  OutputFilePrefix = "n@node@_"
+  Temperature = 300
+  CompressTDR = Yes
+  TotalTimeSteps = 50000
+}
+
+ComplexRefractiveIndex {
+  Material = "Silicon"
+  WavelengthDep = {Real, Imag}
+}
+
+ComplexRefractiveIndex {
+  Material = "Oxide"
+  WavelengthDep = {Real, Imag}
+}
+
+ComplexRefractiveIndex {
+  Material = "Ambient"
+  WavelengthDep = {Real, Imag}
+}
+
+# Lateral periodic BC is retained only as the computational boundary used by
+# the frozen 2D reference optical workflow. It does not define reference pitch.
+Boundary {
+  Type = PeriodicOblique
+  Sides = {X}
+}
+
+Boundary {
+  Type = CPML
+  Sides = {Y}
+  Thickness = 15
+}
+
+PlaneWaveExcitation {
+  Direction = fromTop
+  Wavelength = 940
+  Signal = Harmonic
+  NRise = 4
+  Polarization = TE
+  Intensity = 1.0
+}
+
+Plot {
+  Name = "field940_TE"
+  Quantity = {AbsElectricField, Region}
+  FinalPlot = Yes
+}
+
+Extractor {
+  Name = "optical940_TE"
+  Quantity = {AbsorbedPhotonDensity, OpticalGeneration, AbsorbedPowerDensity, PowerFluxDensity, Region}
+}
+
+Detector {
+  Type = Periodic
+  Tolerance = 0.001
+  StepX = 1
+  StepY = 1
+  StepZ = 1
+  BreakOnError = Yes
+  FailureOnUnreachedTolerance = No
+}
