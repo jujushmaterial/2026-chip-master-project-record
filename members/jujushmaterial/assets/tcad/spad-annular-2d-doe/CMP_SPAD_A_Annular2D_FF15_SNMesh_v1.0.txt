@@ -1,0 +1,56 @@
+#setdep @node|sde@
+
+# =============================================================================
+# CMP SPAD A - Proposed Annular Optical Pattern 2D Tensor Mesh v1.0
+# Sentaurus Mesh T-2022.03
+#
+# PURPOSE
+#   Generate the 2D tensor grid for the FF=15% annular radial-pitch screening
+#   structure produced by the upstream SDE node.
+#
+# FIXED NUMERICAL CONVENTION
+#   - Same manual EnableTensor workflow as the frozen Reference optical baseline.
+#   - minCellSize = 0.005 um retained to stay consistent with the validated
+#     production Reference mesh scale.
+#   - grading off.
+#   - Pattern/SCR neighborhood receives 10 nm max cells in BOTH x and y so the
+#     narrow FF=15% Si rings are represented by several cells where possible.
+#
+# IMPORTANT
+#   This mesh belongs to 2D screening only. Selected candidates require a
+#   separate 3D annular mesh-convergence study before final optical claims.
+# =============================================================================
+
+Title "CMP SPAD A Annular2D FF15 radial-pitch screening tensor mesh v1.0"
+
+IOControls {
+  EnableTensor
+  inputFile = "n@node|sde@_full_annular2d_optical_bnd.tdr"
+  outputFile = "n@node@_msh.tdr"
+  verbosity = 2
+}
+
+Tensor {
+  Mesh {
+    # Global optical resolution, consistent with frozen Reference production.
+    maxCellSize direction "x" 0.025
+    maxCellSize direction "y" 0.025
+    minCellSize = 0.005
+
+    # Dense intentional annular-pattern + SCR neighborhood.
+    window "AnnularOpticalActive" -12.20 12.20 -0.340 0.800
+    maxCellSize window direction "AnnularOpticalActive" "x" 0.010
+    maxCellSize window direction "AnnularOpticalActive" "y" 0.010
+
+    # Preserve critical horizontal interfaces from the frozen optical stack.
+    yCuts = (
+      -0.332
+      -0.325
+      -0.300
+       0.000
+       0.800
+    )
+
+    grading off
+  }
+}
