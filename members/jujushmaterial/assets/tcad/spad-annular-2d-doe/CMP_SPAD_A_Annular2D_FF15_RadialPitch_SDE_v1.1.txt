@@ -1,0 +1,821 @@
+; =============================================================================
+; CMP SPAD A - Proposed Annular Optical Pattern 2D Screening v1.1
+; Sentaurus Structure Editor T-2022.03
+;
+; DERIVED FROM:
+;   CMP_SPAD_2D_EMW_Reference_Optical_SDE_v1.0.txt
+;
+; PURPOSE
+;   Build the 2D diametric/radial cross-section used ONLY to screen candidate
+;   radial pitches for A's proposed concentric annular Si/STI optical pattern.
+;
+; RESEARCH CONSTRAINTS (FIXED)
+;   - Frozen common baseline electrical core is NOT recalibrated.
+;   - Native STI1/STI2/STI3/STI4/STI5 positions and widths remain unchanged.
+;   - STI depth remains fixed at 0.300 um.
+;   - Reference SPAD itself has NO optical pattern FF; Reference FF is N/A.
+;   - The intentional ANNULAR optical pattern has Si-area FF = 15%.
+;   - Workbench independent variable: @RadialPitch@ [um].
+;   - Annular Si ring width is a DEPENDENT value solved automatically so that
+;     the ideal concentric annular pattern area fraction is exactly 0.15.
+;   - Pattern phase is fixed: each radial cell starts with Silicon, followed by
+;     an intentional STI interval. Phase is NOT swept.
+;
+; 2D INTERPRETATION
+;   This deck is a diametric cut through the intended concentric annular pattern.
+;   Sentaurus 2D EMW extrudes this cut in the third direction; therefore this is
+;   a screening model, NOT an exact 3D annular optical result. Final optical
+;   claims require 3D annular SDE/EMW on selected candidates.
+;
+; FF DEFINITION
+;   [surrogate design definition]
+;   The intentional annular-pattern aperture is r = 0.55 ... 12.20 um, matching
+;   the baseline SOI optical-stack span from the anode-window edge to STI5.
+;   The PRIMARY FF constraint is the intended 3D annular optical-pattern Si area
+;   divided by this pattern aperture area. It is solved to exactly 0.15.
+;   Native baseline STI1-5 are NOT compensated away by widening the new rings.
+;   Their overlap with intended Si rings is reported separately as a diagnostic
+;   FinalSiFraction_AfterNativeSTI. Reference FF remains N/A.
+;
+; All lengths are in um. Doping concentrations are in cm^-3.
+; =============================================================================
+
+(sde:clear)
+(sde:set-process-up-direction "+z")
+(sdegeo:set-default-boolean "ABA")
+
+; =============================================================================
+; 0. Parameters
+; =============================================================================
+
+; FD-SOI vertical stack
+(define t_uSi 0.007)
+(define t_BOX 0.025)
+(define t_STI 0.300)
+
+(define y_uSi_top  (- (+ t_STI t_BOX t_uSi)))
+(define y_BOX_top  (- (+ t_STI t_BOX)))
+(define y_surface  (- t_STI))
+(define y_interface 0.0)
+(define y_bottom   10.0)
+
+; Optical simulation padding above the physical device.
+; [surrogate assumption] Ambient thickness = 1.00 um.
+(define t_Ambient 1.00)
+(define y_ambient_top (- y_uSi_top t_Ambient))
+
+; Right-half domain
+(define X_domain 24.0)
+(define X_active 12.5)
+
+; Central anode window
+(define x_anode_start 0.00)
+(define x_anode_end   0.55)
+
+; Native active-zone STI1-STI4: FROZEN baseline geometry.
+; Do NOT sweep these values in A's optical study.
+(define w_STI1 0.60)
+(define x_STI1 0.70)
+
+(define w_STI_active 0.30)
+(define x_STI2 (- 3.125 (* 0.5 w_STI_active)))
+(define x_STI3 (- 6.250 (* 0.5 w_STI_active)))
+(define x_STI4 (- 9.375 (* 0.5 w_STI_active)))
+
+; Peripheral STI5
+(define w_STI5  0.60)
+(define ov_STI5 0.30)
+(define x_STI5 (- X_active ov_STI5))
+(define x_STI5_end (+ x_STI5 w_STI5))
+
+; -----------------------------------------------------------------------------
+; A proposed annular optical-pattern design variables
+; -----------------------------------------------------------------------------
+; IMPORTANT:
+;   Reference FF = N/A.
+;   FF_TARGET below belongs ONLY to the intentional proposed annular pattern.
+(define FF_TARGET 0.15)
+(define RadialPitch @RadialPitch@)
+
+; Pattern aperture follows the baseline SOI optical-stack span.
+; [surrogate design definition]
+(define r_pattern_inner x_anode_end)
+(define r_pattern_outer x_STI5)
+(define pattern_span (- r_pattern_outer r_pattern_inner))
+
+; The aperture can terminate part-way through the last pitch.  The exact ring
+; width is therefore solved from 3D ANNULUS AREA, not approximated as FF*pitch.
+; Pi cancels in all area ratios, so area_no_pi = (r_outer^2-r_inner^2).
+(define N_full (floor (/ pattern_span RadialPitch)))
+(define residual (- pattern_span (* N_full RadialPitch)))
+(define pattern_area_no_pi
+  (- (* r_pattern_outer r_pattern_outer)
+     (* r_pattern_inner r_pattern_inner)))
+(define target_si_area_no_pi (* FF_TARGET pattern_area_no_pi))
+
+; B = sum of inner radii of the N complete radial cells.
+(define B_full
+  (+ (* N_full r_pattern_inner)
+     (* 0.5 RadialPitch N_full (- N_full 1.0))))
+(define r_last (+ r_pattern_inner (* N_full RadialPitch)))
+
+; Candidate solution when the final partial cell contains only part of its Si ring
+; (RingWidth <= residual).
+(define C_partial (+ B_full r_last))
+(define RingWidth_case1
+  (/ (+ (- C_partial)
+        (sqrt (+ (* C_partial C_partial)
+                 (* (+ N_full 1.0) target_si_area_no_pi))))
+     (+ N_full 1.0)))
+
+; Candidate solution when the final residual is entirely Si (RingWidth > residual).
+(define residual_si_area_no_pi
+  (+ (* 2.0 r_last residual) (* residual residual)))
+(define RingWidth_case2
+  (/ (+ (- B_full)
+        (sqrt (+ (* B_full B_full)
+                 (* N_full
+                    (- target_si_area_no_pi residual_si_area_no_pi)))))
+     N_full))
+
+(define RingWidth
+  (if (and (> residual 0.0) (<= RingWidth_case1 residual))
+      RingWidth_case1
+      RingWidth_case2))
+
+(define AnnularSTIWidth (- RadialPitch RingWidth))
+
+; Independent exact 3D-area check of the intentional optical-pattern FF.
+(define full_si_area_no_pi
+  (+ (* N_full RingWidth RingWidth)
+     (* 2.0 RingWidth B_full)))
+(define partial_si_width
+  (if (> residual 0.0)
+      (if (< residual RingWidth) residual RingWidth)
+      0.0))
+(define partial_si_area_no_pi
+  (+ (* 2.0 r_last partial_si_width)
+     (* partial_si_width partial_si_width)))
+(define ideal_pattern_si_area_no_pi
+  (+ full_si_area_no_pi partial_si_area_no_pi))
+(define PatternFF_3D
+  (/ ideal_pattern_si_area_no_pi pattern_area_no_pi))
+(define PatternFF_error (- PatternFF_3D FF_TARGET))
+
+; -----------------------------------------------------------------------------
+; Native-STI overlap diagnostic ONLY.
+; -----------------------------------------------------------------------------
+; This does NOT alter RingWidth.  It quantifies how much of the intended 15% Si
+; annular-pattern area is already occupied by frozen native STI in the final
+; material map.  Thus the primary comparison remains FF_pattern=15% for every
+; radial pitch, while baseline-topology interaction is visible as a diagnostic.
+
+(define (rmin a b) (if (< a b) a b))
+(define (rmax a b) (if (> a b) a b))
+
+; Radial annulus intersection area without pi.
+(define (annulus-overlap-no-pi a0 a1 b0 b1)
+  (let* ((lo (rmax a0 b0))
+         (hi (rmin a1 b1)))
+    (if (> hi lo)
+        (- (* hi hi) (* lo lo))
+        0.0)))
+
+; Frozen native STI radial intervals on the right half.  STI5 begins exactly at
+; r_pattern_outer, so it should contribute zero but is included as a guard/check.
+(define (native-overlap-for-si-ring r0 r1)
+  (+
+    (annulus-overlap-no-pi r0 r1 x_STI1 (+ x_STI1 w_STI1))
+    (annulus-overlap-no-pi r0 r1 x_STI2 (+ x_STI2 w_STI_active))
+    (annulus-overlap-no-pi r0 r1 x_STI3 (+ x_STI3 w_STI_active))
+    (annulus-overlap-no-pi r0 r1 x_STI4 (+ x_STI4 w_STI_active))
+    (annulus-overlap-no-pi r0 r1 x_STI5 (+ x_STI5 w_STI5))))
+
+(define (sum-native-overlap-full-cells k)
+  (if (< k N_full)
+      (let* ((r0 (+ r_pattern_inner (* k RadialPitch)))
+             (r1 (+ r0 RingWidth)))
+        (+ (native-overlap-for-si-ring r0 r1)
+           (sum-native-overlap-full-cells (+ k 1))))
+      0.0))
+
+(define native_overlap_full_no_pi
+  (sum-native-overlap-full-cells 0))
+(define native_overlap_partial_no_pi
+  (if (> partial_si_width 0.0)
+      (native-overlap-for-si-ring
+        r_last (+ r_last partial_si_width))
+      0.0))
+(define NativeOverlapArea_no_pi
+  (+ native_overlap_full_no_pi native_overlap_partial_no_pi))
+
+(define FinalSiAreaAfterNative_no_pi
+  (- ideal_pattern_si_area_no_pi NativeOverlapArea_no_pi))
+(define FinalSiFraction_AfterNativeSTI
+  (/ FinalSiAreaAfterNative_no_pi pattern_area_no_pi))
+(define NativeOverlapFraction_Aperture
+  (/ NativeOverlapArea_no_pi pattern_area_no_pi))
+(define NativeOverlapFraction_PatternSi
+  (if (> ideal_pattern_si_area_no_pi 0.0)
+      (/ NativeOverlapArea_no_pi ideal_pattern_si_area_no_pi)
+      0.0))
+
+(display "ANNULAR2D: RadialPitch_um=") (display RadialPitch) (newline)
+(display "ANNULAR2D: RingWidth_um=") (display RingWidth) (newline)
+(display "ANNULAR2D: AnnularSTIWidth_um=") (display AnnularSTIWidth) (newline)
+(display "ANNULAR2D: N_full=") (display N_full) (newline)
+(display "ANNULAR2D: residual_um=") (display residual) (newline)
+(display "ANNULAR2D: PatternFF_target=") (display FF_TARGET) (newline)
+(display "ANNULAR2D: PatternFF_3D=") (display PatternFF_3D) (newline)
+(display "ANNULAR2D: PatternFF_error=") (display PatternFF_error) (newline)
+(display "ANNULAR2D: NativeOverlapArea_no_pi=") (display NativeOverlapArea_no_pi) (newline)
+(display "ANNULAR2D: NativeOverlapFraction_Aperture=") (display NativeOverlapFraction_Aperture) (newline)
+(display "ANNULAR2D: NativeOverlapFraction_PatternSi=") (display NativeOverlapFraction_PatternSi) (newline)
+(display "ANNULAR2D: FinalSiFraction_AfterNativeSTI=") (display FinalSiFraction_AfterNativeSTI) (newline)
+
+
+; Cathode N-well pickup and DNW mask edge
+(define x_NW_start 14.20)
+(define w_NW        1.20)
+(define x_NW_end    (+ x_NW_start w_NW))
+(define x_DNW_edge  (+ x_NW_end 0.90))
+
+; Outer topology: STI6 - outer P-well pickup - STI7
+(define guard_DNW_PW 1.30)
+(define w_STI6 0.60)
+(define w_STI7 0.60)
+(define w_SubPW 1.20)
+(define sub_contact_inset 0.20)
+
+(define x_SubPW_start (+ x_DNW_edge guard_DNW_PW))
+(define x_SubPW_end   (+ x_SubPW_start w_SubPW))
+
+(define x_STI6      (- x_SubPW_start w_STI6))
+(define x_STI6_end  (+ x_STI6 w_STI6))
+
+(define x_SubContact_start (+ x_SubPW_start sub_contact_inset))
+(define x_SubContact_end   (- x_SubPW_end sub_contact_inset))
+
+(define x_STI7     x_SubPW_end)
+(define x_STI7_end (+ x_STI7 w_STI7))
+
+; Analytic doping initial values
+; @PW_Dose@ / @DNW_Dose@ are Gaussian PeakVal [cm^-3], not implant dose [cm^-2].
+(define PW_Rp     0.10)
+(define PW_dRp    0.20)
+(define PW_Npeak  @PW_Dose@)
+
+(define DNW_Rp    1.00)
+(define DNW_dRp   0.38)
+(define DNW_Npeak @DNW_Dose@)
+
+(define MeshScale @MeshScale@)
+(define (ms x) (* MeshScale x))
+
+(define NW_Rp     0.30)
+(define NW_dRp    0.40)
+(define NW_Npeak  1e19)
+
+(define PP_Rp     0.02)
+(define PP_dRp    0.05)
+(define PP_Npeak  1e19)
+
+; =============================================================================
+; 1. Geometry helpers
+; =============================================================================
+
+(define (make-rect name material x0 y0 x1 y1)
+  (sdegeo:create-rectangle
+    (position x0 y0 0.0)
+    (position x1 y1 0.0)
+    material name))
+
+(define (make-sti name x0 width)
+  (make-rect name "Oxide" x0 y_uSi_top (+ x0 width) y_interface))
+
+(define (make-window name x0 y0 x1 y1)
+  (sdedr:define-refeval-window name "Rectangle"
+    (position x0 y0 0.0)
+    (position x1 y1 0.0)))
+
+(define (set-edge-contact x y contact-name)
+  (sdegeo:set-contact (find-edge-id (position x y 0.0)) contact-name))
+
+; =============================================================================
+; 2. Right-half physical topology
+; =============================================================================
+
+(define AmbientBody
+  (make-rect "R.Ambient" "Ambient"
+    0.0 y_ambient_top X_domain y_surface))
+
+(define BulkBody
+  (make-rect "Bulk" "Silicon" 0.0 y_surface X_domain y_bottom))
+
+(define STI1Body (make-sti "R.STI1" x_STI1 w_STI1))
+(define STI2Body (make-sti "R.STI2" x_STI2 w_STI_active))
+(define STI3Body (make-sti "R.STI3" x_STI3 w_STI_active))
+(define STI4Body (make-sti "R.STI4" x_STI4 w_STI_active))
+(define STI5Body (make-sti "R.STI5" x_STI5 w_STI5))
+(define STI6Body (make-sti "R.STI6" x_STI6 w_STI6))
+(define STI7Body (make-sti "R.STI7" x_STI7 w_STI7))
+
+; BOX and 7 nm UpperSi ribs
+(define BOX_Rib1
+  (make-rect "R.BOX.Rib1" "Oxide"
+    x_anode_end y_BOX_top x_STI1 y_surface))
+(define USI_Rib1
+  (make-rect "R.UpperSi.Rib1" "Oxide"
+    x_anode_end y_uSi_top x_STI1 y_BOX_top))
+
+(define BOX_Rib2
+  (make-rect "R.BOX.Rib2" "Oxide"
+    (+ x_STI1 w_STI1) y_BOX_top x_STI2 y_surface))
+(define USI_Rib2
+  (make-rect "R.UpperSi.Rib2" "Oxide"
+    (+ x_STI1 w_STI1) y_uSi_top x_STI2 y_BOX_top))
+
+(define BOX_Rib3
+  (make-rect "R.BOX.Rib3" "Oxide"
+    (+ x_STI2 w_STI_active) y_BOX_top x_STI3 y_surface))
+(define USI_Rib3
+  (make-rect "R.UpperSi.Rib3" "Oxide"
+    (+ x_STI2 w_STI_active) y_uSi_top x_STI3 y_BOX_top))
+
+(define BOX_Rib4
+  (make-rect "R.BOX.Rib4" "Oxide"
+    (+ x_STI3 w_STI_active) y_BOX_top x_STI4 y_surface))
+(define USI_Rib4
+  (make-rect "R.UpperSi.Rib4" "Oxide"
+    (+ x_STI3 w_STI_active) y_uSi_top x_STI4 y_BOX_top))
+
+(define BOX_Rib5
+  (make-rect "R.BOX.Rib5" "Oxide"
+    (+ x_STI4 w_STI_active) y_BOX_top x_STI5 y_surface))
+(define USI_Rib5
+  (make-rect "R.UpperSi.Rib5" "Oxide"
+    (+ x_STI4 w_STI_active) y_uSi_top x_STI5 y_BOX_top))
+
+(define UpperSiBodies
+  (list USI_Rib1 USI_Rib2 USI_Rib3 USI_Rib4 USI_Rib5))
+
+; =============================================================================
+; 3. Right-half contacts
+; =============================================================================
+
+(sdegeo:define-contact-set "anode"     4 (color:rgb 1 0 0) "##")
+(sdegeo:define-contact-set "cathode"   4 (color:rgb 0 0 1) "##")
+(sdegeo:define-contact-set "substrate" 4 (color:rgb 0 1 0) "##")
+
+(sdegeo:insert-vertex (position x_anode_end y_surface 0.0))
+(sdegeo:insert-vertex (position x_NW_start y_surface 0.0))
+(sdegeo:insert-vertex (position x_NW_end   y_surface 0.0))
+(sdegeo:insert-vertex (position x_SubContact_start y_surface 0.0))
+(sdegeo:insert-vertex (position x_SubContact_end   y_surface 0.0))
+
+(set-edge-contact (* 0.5 (+ x_anode_start x_anode_end))
+                  y_surface "anode")
+(set-edge-contact (* 0.5 (+ x_NW_start x_NW_end))
+                  y_surface "cathode")
+(set-edge-contact (* 0.5 (+ x_SubContact_start x_SubContact_end))
+                  y_surface "substrate")
+
+; =============================================================================
+; 4. Right-half analytic doping
+; =============================================================================
+
+(sdedr:define-constant-profile
+  "Dop.Substrate" "BoronActiveConcentration" 1e15)
+(sdedr:define-constant-profile-region
+  "Place.Substrate" "Dop.Substrate" "Bulk")
+
+(sdedr:define-refeval-window "BL.PW.Center" "Line"
+  (position (- X_active) y_surface 0.0)
+  (position X_active y_surface 0.0))
+
+(sdedr:define-refeval-window "BL.DNW" "Line"
+  (position (- x_DNW_edge) y_surface 0.0)
+  (position x_DNW_edge y_surface 0.0))
+
+(sdedr:define-refeval-window "BL.NW" "Line"
+  (position x_NW_start y_surface 0.0)
+  (position x_NW_end y_surface 0.0))
+
+(sdedr:define-refeval-window "BL.PP.Anode" "Line"
+  (position (- x_anode_end) y_surface 0.0)
+  (position x_anode_end y_surface 0.0))
+
+(sdedr:define-refeval-window "BL.PW.Sub" "Line"
+  (position x_SubPW_start y_surface 0.0)
+  (position x_SubPW_end y_surface 0.0))
+
+(sdedr:define-refeval-window "BL.PP.Sub" "Line"
+  (position x_SubContact_start y_surface 0.0)
+  (position x_SubContact_end y_surface 0.0))
+
+(sdedr:define-gaussian-profile "Imp.PW" "BoronActiveConcentration"
+  "PeakPos" PW_Rp "PeakVal" PW_Npeak "StdDev" PW_dRp
+  "Gauss" "Factor" 0.8)
+
+(sdedr:define-analytical-profile-placement
+  "Place.PW.Center" "Imp.PW" "BL.PW.Center"
+  "Positive" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+(sdedr:define-analytical-profile-placement
+  "Place.PW.Sub" "Imp.PW" "BL.PW.Sub"
+  "Positive" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+(sdedr:define-gaussian-profile "Imp.DNW" "PhosphorusActiveConcentration"
+  "PeakPos" DNW_Rp "PeakVal" DNW_Npeak "StdDev" DNW_dRp
+  "Gauss" "Factor" 0.8)
+
+(sdedr:define-analytical-profile-placement
+  "Place.DNW" "Imp.DNW" "BL.DNW"
+  "Positive" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+(sdedr:define-gaussian-profile "Imp.NW" "PhosphorusActiveConcentration"
+  "PeakPos" NW_Rp "PeakVal" NW_Npeak "StdDev" NW_dRp
+  "Gauss" "Factor" 0.8)
+
+(sdedr:define-analytical-profile-placement
+  "Place.NW" "Imp.NW" "BL.NW"
+  "Positive" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+(sdedr:define-gaussian-profile "Imp.PP" "BoronActiveConcentration"
+  "PeakPos" PP_Rp "PeakVal" PP_Npeak "StdDev" PP_dRp
+  "Gauss" "Factor" 0.8)
+
+(sdedr:define-analytical-profile-placement
+  "Place.PP.Anode" "Imp.PP" "BL.PP.Anode"
+  "Positive" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+(sdedr:define-analytical-profile-placement
+  "Place.PP.Sub" "Imp.PP" "BL.PP.Sub"
+  "Positive" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+; =============================================================================
+; 5. Spatial mesh hierarchy on the right half
+; =============================================================================
+
+(make-window "RW.Global" 0.0 y_uSi_top X_domain y_bottom)
+(sdedr:define-refinement-size
+  "RD.Global" 3.00 1.50 0.80 0.40)
+(sdedr:define-refinement-placement
+  "PL.Global" "RD.Global" "RW.Global")
+
+(sdedr:define-refeval-window "RW.Depletion" "Polygon"
+  (list
+    (position 0.00 0.50 0.0)
+    (position 15.80 0.50 0.0)
+    (position 17.50 0.80 0.0)
+    (position 18.70 1.50 0.0)
+    (position 19.60 2.80 0.0)
+    (position 20.20 4.20 0.0)
+    (position 19.00 4.50 0.0)
+    (position 17.00 5.20 0.0)
+    (position 12.00 6.20 0.0)
+    (position 6.00  6.80 0.0)
+    (position 0.00  7.00 0.0)
+    (position 0.00  0.50 0.0)))
+
+(sdedr:define-refinement-size
+  "RD.Depletion"
+  (ms 0.80) (ms 0.30) (ms 0.15) (ms 0.06))
+(sdedr:define-refinement-placement
+  "PL.Depletion" "RD.Depletion" "RW.Depletion")
+
+(make-window "RW.Profile" 0.0 y_surface 20.50 2.15)
+(sdedr:define-refinement-size
+  "RD.Profile"
+  (ms 0.80) (ms 0.30) (ms 0.04) (ms 0.02))
+
+(sdedr:define-refinement-function
+  "RD.Profile" "DopingConcentration" "MaxTransDiff" 1.5)
+
+(sdedr:define-refinement-function
+  "RD.Profile" "MaxInterval"
+  "Variable" "PhosphorusActiveConcentration"
+  "Cmin" 2e15 "Cmax" 5e16
+  "Scaling" 2 "TargetLength" (ms 0.08) "Rolloff")
+
+(sdedr:define-refinement-function
+  "RD.Profile" "MaxInterval"
+  "Variable" "BoronActiveConcentration"
+  "Cmin" 2e15 "Cmax" 2e17
+  "Scaling" 2 "TargetLength" (ms 0.08) "Rolloff")
+
+(sdedr:define-refinement-placement
+  "PL.Profile" "RD.Profile" "RW.Profile")
+
+(sdedr:define-refeval-window "RW.RedArea" "Polygon"
+  (list
+    (position  0.00 2.15 0.0)
+    (position 19.50 2.15 0.0)
+    (position 19.50 2.25 0.0)
+    (position 18.00 2.35 0.0)
+    (position 15.00 2.60 0.0)
+    (position 12.00 3.00 0.0)
+    (position  9.00 3.40 0.0)
+    (position  6.00 3.75 0.0)
+    (position  3.00 3.95 0.0)
+    (position  0.00 4.05 0.0)
+    (position  0.00 2.15 0.0)))
+
+(sdedr:define-refinement-size
+  "RD.RedArea"
+  (ms 0.30) (ms 0.12) (ms 0.08) (ms 0.04))
+(sdedr:define-refinement-placement
+  "PL.RedArea" "RD.RedArea" "RW.RedArea")
+
+(make-window "RW.Stack"
+  x_anode_end y_uSi_top x_STI5 (+ y_surface 0.02))
+(sdedr:define-refinement-size
+  "RD.Stack"
+  (ms 0.50) (ms 0.010) (ms 0.10) (ms 0.005))
+(sdedr:define-refinement-placement
+  "PL.Stack" "RD.Stack" "RW.Stack")
+
+(make-window "RW.Anode"
+  0.0 (- y_surface 0.03) 0.80 0.30)
+(sdedr:define-refinement-size
+  "RD.Anode"
+  (ms 0.15) (ms 0.05) (ms 0.03) (ms 0.01))
+(sdedr:define-refinement-function
+  "RD.Anode" "DopingConcentration" "MaxTransDiff" 1.0)
+(sdedr:define-refinement-placement
+  "PL.Anode" "RD.Anode" "RW.Anode")
+
+; Native STI1-STI4 refinement windows automatically follow the sweep positions.
+(sdedr:define-refinement-size
+  "RD.STI14"
+  (ms 0.15) (ms 0.08) (ms 0.03) (ms 0.015))
+(sdedr:define-refinement-function
+  "RD.STI14" "MaxLenInt" "Silicon" "Oxide" (ms 0.015) 1.5)
+
+(make-window "RW.STI1"
+  (- x_STI1 0.10) (- y_uSi_top 0.02)
+  (+ x_STI1 w_STI1 0.10) 0.18)
+(make-window "RW.STI2"
+  (- x_STI2 0.10) (- y_uSi_top 0.02)
+  (+ x_STI2 w_STI_active 0.10) 0.18)
+(make-window "RW.STI3"
+  (- x_STI3 0.10) (- y_uSi_top 0.02)
+  (+ x_STI3 w_STI_active 0.10) 0.18)
+(make-window "RW.STI4"
+  (- x_STI4 0.10) (- y_uSi_top 0.02)
+  (+ x_STI4 w_STI_active 0.10) 0.18)
+
+(sdedr:define-refinement-placement
+  "PL.STI1" "RD.STI14" "RW.STI1")
+(sdedr:define-refinement-placement
+  "PL.STI2" "RD.STI14" "RW.STI2")
+(sdedr:define-refinement-placement
+  "PL.STI3" "RD.STI14" "RW.STI3")
+(sdedr:define-refinement-placement
+  "PL.STI4" "RD.STI14" "RW.STI4")
+
+(make-window "RW.PEB"
+  (- x_STI5 0.60) (- y_uSi_top 0.03)
+  (+ x_NW_end 0.60) 1.80)
+(sdedr:define-refinement-size
+  "RD.PEB"
+  (ms 0.25) (ms 0.12) (ms 0.03) (ms 0.015))
+(sdedr:define-refinement-function
+  "RD.PEB" "DopingConcentration" "MaxTransDiff" 1.0)
+(sdedr:define-refinement-function
+  "RD.PEB" "MaxLenInt" "Silicon" "Oxide" (ms 0.010) 1.5)
+(sdedr:define-refinement-placement
+  "PL.PEB" "RD.PEB" "RW.PEB")
+
+(make-window "RW.Outer"
+  (- x_STI6 0.50) (- y_uSi_top 0.03)
+  (+ x_STI7_end 0.50) 2.30)
+(sdedr:define-refinement-size
+  "RD.Outer"
+  (ms 0.30) (ms 0.15) (ms 0.04) (ms 0.02))
+(sdedr:define-refinement-function
+  "RD.Outer" "DopingConcentration" "MaxTransDiff" 1.2)
+(sdedr:define-refinement-function
+  "RD.Outer" "MaxLenInt" "Silicon" "Oxide" (ms 0.020) 1.5)
+(sdedr:define-refinement-placement
+  "PL.Outer" "RD.Outer" "RW.Outer")
+
+; =============================================================================
+; 6. First output: right-half compatibility mesh (NOT used by EMW)
+; =============================================================================
+
+(sde:build-mesh "n@node@")
+
+; =============================================================================
+; 7. Restore physical UpperSi, then reflect geometry
+; =============================================================================
+
+(define (restore-upper-si body)
+  (sde:add-material body "Silicon" (generic:get body "region")))
+
+(for-each restore-upper-si UpperSiBodies)
+
+; -----------------------------------------------------------------------------
+; 7.1 Add intentional annular-pattern STI on the RIGHT radial half
+; -----------------------------------------------------------------------------
+; Each radial period starts with a Silicon ring of dependent width RingWidth.
+; The remainder of the period is converted to Oxide with the same vertical STI
+; extent as the fixed process STI.  Existing native STI bodies are left in place.
+;
+; In this 2D deck these rectangles are the diametric cross-section of the
+; intended 3D concentric annular STI trenches.  They are mirrored through x=0
+; together with the frozen baseline bodies below.
+
+(define (annular-sti-name k)
+  (string-append "R.AnnularOpticalSTI." (number->string k)))
+
+(define (build-annular-full-cells k)
+  (if (< k N_full)
+      (let* ((cell_r0 (+ r_pattern_inner (* k RadialPitch)))
+             (sti_r0 (+ cell_r0 RingWidth))
+             (sti_r1 (+ cell_r0 RadialPitch)))
+        (if (> sti_r1 sti_r0)
+            (make-rect (annular-sti-name k) "Oxide"
+              sti_r0 y_uSi_top sti_r1 y_interface))
+        (build-annular-full-cells (+ k 1)))))
+
+(build-annular-full-cells 0)
+
+; If the aperture ends inside an STI portion of the last partial period,
+; create only the physically remaining fragment.  If residual <= RingWidth,
+; the aperture ends inside Silicon and no terminal STI fragment is required.
+(if (> residual RingWidth)
+    (make-rect "R.AnnularOpticalSTI.Edge" "Oxide"
+      (+ r_last RingWidth) y_uSi_top r_pattern_outer y_interface))
+
+
+(define MirrorX0
+  (transform:reflection (position 0.0 0.0 0.0) (gvector 1.0 0.0 0.0)))
+
+(sdegeo:mirror-selected (get-body-list) MirrorX0 #t)
+
+; -----------------------------------------------------------------------------
+; 7.3 Pattern-region support mesh for final SDE boundary export
+; -----------------------------------------------------------------------------
+; This does NOT replace the downstream EMW tensor mesh.  It only prevents the
+; temporary SDE mixed mesh from under-resolving the dense intentional pattern
+; while producing the boundary TDR.
+(make-window "RW.AnnularPattern.Full"
+  (- r_pattern_outer) (- y_uSi_top 0.01)
+  r_pattern_outer 0.05)
+(sdedr:define-refinement-size
+  "RD.AnnularPattern"
+  0.050 0.020 0.010 0.005)
+(sdedr:define-refinement-function
+  "RD.AnnularPattern" "MaxLenInt" "Silicon" "Oxide" 0.005 1.3)
+(sdedr:define-refinement-placement
+  "PL.AnnularPattern.Full" "RD.AnnularPattern" "RW.AnnularPattern.Full")
+
+
+; Left-side separated outer implants
+(sdedr:define-refeval-window "BL.NW.Left" "Line"
+  (position (- x_NW_end) y_surface 0.0)
+  (position (- x_NW_start) y_surface 0.0))
+
+(sdedr:define-refeval-window "BL.PW.Sub.Left" "Line"
+  (position (- x_SubPW_end) y_surface 0.0)
+  (position (- x_SubPW_start) y_surface 0.0))
+
+(sdedr:define-refeval-window "BL.PP.Sub.Left" "Line"
+  (position (- x_SubContact_end) y_surface 0.0)
+  (position (- x_SubContact_start) y_surface 0.0))
+
+(sdedr:define-analytical-profile-placement
+  "Place.NW.Left" "Imp.NW" "BL.NW.Left"
+  "Positive" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+(sdedr:define-analytical-profile-placement
+  "Place.PW.Sub.Left" "Imp.PW" "BL.PW.Sub.Left"
+  "Positive" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+(sdedr:define-analytical-profile-placement
+  "Place.PP.Sub.Left" "Imp.PP" "BL.PP.Sub.Left"
+  "Positive" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+; Left-side mesh windows
+(make-window "RW.Global.Left"
+  (- X_domain) y_uSi_top 0.0 y_bottom)
+(sdedr:define-refinement-placement
+  "PL.Global.Left" "RD.Global" "RW.Global.Left")
+
+(sdedr:define-refeval-window "RW.Depletion.Left" "Polygon"
+  (list
+    (position   0.00 0.50 0.0)
+    (position -15.80 0.50 0.0)
+    (position -17.50 0.80 0.0)
+    (position -18.70 1.50 0.0)
+    (position -19.60 2.80 0.0)
+    (position -20.20 4.20 0.0)
+    (position -19.00 4.50 0.0)
+    (position -17.00 5.20 0.0)
+    (position -12.00 6.20 0.0)
+    (position  -6.00 6.80 0.0)
+    (position   0.00 7.00 0.0)
+    (position   0.00 0.50 0.0)))
+(sdedr:define-refinement-placement
+  "PL.Depletion.Left" "RD.Depletion" "RW.Depletion.Left")
+
+(make-window "RW.Profile.Left"
+  -20.50 y_surface 0.0 2.15)
+(sdedr:define-refinement-placement
+  "PL.Profile.Left" "RD.Profile" "RW.Profile.Left")
+
+(sdedr:define-refeval-window "RW.RedArea.Left" "Polygon"
+  (list
+    (position   0.00 2.15 0.0)
+    (position -19.50 2.15 0.0)
+    (position -19.50 2.25 0.0)
+    (position -18.00 2.35 0.0)
+    (position -15.00 2.60 0.0)
+    (position -12.00 3.00 0.0)
+    (position  -9.00 3.40 0.0)
+    (position  -6.00 3.75 0.0)
+    (position  -3.00 3.95 0.0)
+    (position   0.00 4.05 0.0)
+    (position   0.00 2.15 0.0)))
+(sdedr:define-refinement-placement
+  "PL.RedArea.Left" "RD.RedArea" "RW.RedArea.Left")
+
+(make-window "RW.Stack.Left"
+  (- x_STI5) y_uSi_top (- x_anode_end) (+ y_surface 0.02))
+(sdedr:define-refinement-placement
+  "PL.Stack.Left" "RD.Stack" "RW.Stack.Left")
+
+(make-window "RW.Anode.Left"
+  -0.80 (- y_surface 0.03) 0.0 0.30)
+(sdedr:define-refinement-placement
+  "PL.Anode.Left" "RD.Anode" "RW.Anode.Left")
+
+(make-window "RW.STI1.Left"
+  (- (+ x_STI1 w_STI1 0.10)) (- y_uSi_top 0.02)
+  (+ (- x_STI1) 0.10) 0.18)
+(make-window "RW.STI2.Left"
+  (- (+ x_STI2 w_STI_active 0.10)) (- y_uSi_top 0.02)
+  (+ (- x_STI2) 0.10) 0.18)
+(make-window "RW.STI3.Left"
+  (- (+ x_STI3 w_STI_active 0.10)) (- y_uSi_top 0.02)
+  (+ (- x_STI3) 0.10) 0.18)
+(make-window "RW.STI4.Left"
+  (- (+ x_STI4 w_STI_active 0.10)) (- y_uSi_top 0.02)
+  (+ (- x_STI4) 0.10) 0.18)
+
+(sdedr:define-refinement-placement
+  "PL.STI1.Left" "RD.STI14" "RW.STI1.Left")
+(sdedr:define-refinement-placement
+  "PL.STI2.Left" "RD.STI14" "RW.STI2.Left")
+(sdedr:define-refinement-placement
+  "PL.STI3.Left" "RD.STI14" "RW.STI3.Left")
+(sdedr:define-refinement-placement
+  "PL.STI4.Left" "RD.STI14" "RW.STI4.Left")
+
+(make-window "RW.PEB.Left"
+  (- (+ x_NW_end 0.60)) (- y_uSi_top 0.03)
+  (+ (- x_STI5) 0.60) 1.80)
+(sdedr:define-refinement-placement
+  "PL.PEB.Left" "RD.PEB" "RW.PEB.Left")
+
+(make-window "RW.Outer.Left"
+  (- (+ x_STI7_end 0.50)) (- y_uSi_top 0.03)
+  (+ (- x_STI6) 0.50) 2.30)
+(sdedr:define-refinement-placement
+  "PL.Outer.Left" "RD.Outer" "RW.Outer.Left")
+
+; =============================================================================
+; 8. Explicit full-device contact check and assignment
+; =============================================================================
+
+(sdegeo:insert-vertex (position (- x_anode_end) y_surface 0.0))
+(sdegeo:insert-vertex (position (- x_NW_end)   y_surface 0.0))
+(sdegeo:insert-vertex (position (- x_NW_start) y_surface 0.0))
+(sdegeo:insert-vertex (position (- x_SubContact_end)   y_surface 0.0))
+(sdegeo:insert-vertex (position (- x_SubContact_start) y_surface 0.0))
+
+(set-edge-contact (*  0.5 x_anode_end) y_surface "anode")
+(set-edge-contact (* -0.5 x_anode_end) y_surface "anode")
+
+(set-edge-contact
+  (*  0.5 (+ x_NW_start x_NW_end)) y_surface "cathode")
+(set-edge-contact
+  (* -0.5 (+ x_NW_start x_NW_end)) y_surface "cathode")
+
+(set-edge-contact
+  (*  0.5 (+ x_SubContact_start x_SubContact_end))
+  y_surface "substrate")
+(set-edge-contact
+  (* -0.5 (+ x_SubContact_start x_SubContact_end))
+  y_surface "substrate")
+
+; =============================================================================
+; 9. Final output: full planar annular-2D screening structure + optical Ambient (FF diagnostics v1.1)
+; =============================================================================
+
+(sde:build-mesh "n@node@_full_annular2d_optical")
+
+; =============================================================================
+; End
+; =============================================================================
