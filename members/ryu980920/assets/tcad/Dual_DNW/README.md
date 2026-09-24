@@ -111,14 +111,7 @@ After the restart load, it begins from the well-mask definitions and Dual-DNW/PW
 
 This split is intended to guarantee that the common STI process is executed once while the 96 DOE branches start from the same post-STI/densification state.
 
-### CMP_SPAD_DualDNW_SProcess_v0.1_PLX_only.txt
 
-This is the earlier monolithic Dual-DNW PLX-only command and is retained for history/reference.
-
-For the current 96-case DOE, use the v0.2 Stage 1 + Stage 2 split flow instead.
-
-
-### CMP_SPAD_DualDNW_SProcess_v0.1_PLX_only.txt
 
 Based on the Large_DOE PLX-only SProcess flow.
 
