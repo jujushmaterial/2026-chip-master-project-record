@@ -54,16 +54,13 @@ Stage 2 uses:
 - `PW_TRIM_E`
 - `PW_FIXED_E`
 - `PW_TRIM_FRAC`
-- `PW_FIXED_FRAC`
 - `PW_TOTAL_DOSE`
 - `RTA_T`
 - `RTA_t`
 
-`DNW_FIXED_FRAC`, `DNW_FIXED_DOSE`, and `DNW_TRIM_DOSE` are derived inside the command.
+`DNW_FIXED_FRAC`, `DNW_FIXED_DOSE`, `DNW_TRIM_DOSE`, `PW_FIXED_FRAC`, `PW_FIXED_DOSE`, and `PW_TRIM_DOSE` are derived inside the command.
 
-Because `PW_FIXED_FRAC` is already registered as an SWB parameter in the CMP project, v0.2 does not silently replace it with a constant or an internal derived value. Stage 2 checks that `PW_FIXED_FRAC + PW_TRIM_FRAC = 1`.
-
-Therefore the experiment table used with v0.2 must populate `PW_FIXED_FRAC` consistently with `PW_TRIM_FRAC` (for example 0.500 with 0.500, or 0.475 with 0.525).
+`PW_FIXED_FRAC` is **not** an SWB parameter in this flow. It is calculated internally as `1 - PW_TRIM_FRAC`, so only `PW_TRIM_FRAC` is imported/swept for the PW dose split.
 
 ## Files
 
