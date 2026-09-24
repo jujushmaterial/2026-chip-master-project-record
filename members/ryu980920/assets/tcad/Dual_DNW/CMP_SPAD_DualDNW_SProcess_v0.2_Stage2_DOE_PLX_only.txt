@@ -63,20 +63,10 @@ set DNW_TRIM_DOSE  [expr $DNW_DOSE*$DNW_TRIM_FRAC]
 
 set PW_TOTAL_DOSE  @PW_TOTAL_DOSE@
 set PW_TRIM_FRAC   @PW_TRIM_FRAC@
-set PW_FIXED_FRAC  @PW_FIXED_FRAC@
-
-set PW_FRAC_SUM [expr $PW_FIXED_FRAC+$PW_TRIM_FRAC]
+set PW_FIXED_FRAC  [expr 1.0-$PW_TRIM_FRAC]
 
 if {($PW_TRIM_FRAC < 0.0) || ($PW_TRIM_FRAC > 1.0)} {
    error "PW_TRIM_FRAC must satisfy 0.0 <= PW_TRIM_FRAC <= 1.0"
-}
-
-if {($PW_FIXED_FRAC < 0.0) || ($PW_FIXED_FRAC > 1.0)} {
-   error "PW_FIXED_FRAC must satisfy 0.0 <= PW_FIXED_FRAC <= 1.0"
-}
-
-if {abs($PW_FRAC_SUM-1.0) > 1.0e-9} {
-   error "PW_FIXED_FRAC + PW_TRIM_FRAC must equal 1.0"
 }
 
 set PW_FIXED_DOSE  [expr $PW_TOTAL_DOSE*$PW_FIXED_FRAC]
