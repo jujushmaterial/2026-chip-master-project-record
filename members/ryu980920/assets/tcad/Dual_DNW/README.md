@@ -41,7 +41,11 @@ The total DNW dose remains:
 
 No anneal is inserted between the two DNW implants. Both DNW components, both PW components, and the NW share the same common WELL RTA.
 
-## SWB parameters used by the current command
+## SWB parameters used by the current split flow
+
+Stage 1 contains no DOE SWB parameters.
+
+Stage 2 uses:
 
 - `DNW_DOSE`
 - `DNW_E`
@@ -50,13 +54,72 @@ No anneal is inserted between the two DNW implants. Both DNW components, both PW
 - `PW_TRIM_E`
 - `PW_FIXED_E`
 - `PW_TRIM_FRAC`
+- `PW_FIXED_FRAC`
 - `PW_TOTAL_DOSE`
 - `RTA_T`
 - `RTA_t`
 
-Derived fractions/doses are calculated inside the SProcess command and are not independent SWB parameters.
+`DNW_FIXED_FRAC`, `DNW_FIXED_DOSE`, and `DNW_TRIM_DOSE` are derived inside the command.
+
+Because `PW_FIXED_FRAC` is already registered as an SWB parameter in the CMP project, v0.2 does not silently replace it with a constant or an internal derived value. Stage 2 checks that `PW_FIXED_FRAC + PW_TRIM_FRAC = 1`.
+
+Therefore the experiment table used with v0.2 must populate `PW_FIXED_FRAC` consistently with `PW_TRIM_FRAC` (for example 0.500 with 0.500, or 0.475 with 0.525).
 
 ## Files
+
+### CMP_SPAD_DualDNW_SProcess_v0.2_Stage1_CommonSTISeed.txt
+
+Current recommended Stage 1 for the DOE split/restart flow.
+
+It runs only the common front-end:
+
+`SOI definition -> STI etch/fill -> STI densification`
+
+and saves:
+
+`n@node@_STI_RESTART_fps.tdr`
+
+using:
+
+`struct tdr=n@node@_STI_RESTART restart`
+
+The explicit `restart` option is intentional. Do not add `!restart`, `!Gas`, or `!interfaces`, because those options remove information required for exact Sentaurus Process restart continuation.
+
+### CMP_SPAD_DualDNW_SProcess_v0.2_Stage2_DOE_PLX_only.txt
+
+Current recommended Stage 2 for the 96-case Dual-DNW DOE.
+
+Workbench dependency:
+
+`#setdep @node|sprocess1@`
+
+The stage resolves the upstream seed as:
+
+`n@node|sprocess1@_STI_RESTART_fps.tdr`
+
+and loads it with `init tdr=...`.
+
+A file-existence guard is included. If the Stage 1 restart TDR is not available, Stage 2 stops with an error instead of silently starting from a fresh structure.
+
+Stage 2 intentionally contains none of the following:
+
+- `line clear`
+- initial SOI `region` creation
+- `M_STI`
+- STI silicon/BOX/bulk etch
+- STI oxide fill
+- STI densification
+
+After the restart load, it begins from the well-mask definitions and Dual-DNW/PW/NW implants.
+
+This split is intended to guarantee that the common STI process is executed once while the 96 DOE branches start from the same post-STI/densification state.
+
+### CMP_SPAD_DualDNW_SProcess_v0.1_PLX_only.txt
+
+This is the earlier monolithic Dual-DNW PLX-only command and is retained for history/reference.
+
+For the current 96-case DOE, use the v0.2 Stage 1 + Stage 2 split flow instead.
+
 
 ### CMP_SPAD_DualDNW_SProcess_v0.1_PLX_only.txt
 
