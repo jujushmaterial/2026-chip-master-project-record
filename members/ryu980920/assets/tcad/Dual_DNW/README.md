@@ -1,169 +1,427 @@
 # Dual_DNW
 
-## Purpose
+## 1. 목적
 
-This directory contains the current dual-energy DNW calibration flow for the CMP 28 nm FD-SOI SPAD surrogate-baseline reconstruction.
+이 폴더는 CMP 28 nm FD-SOI SPAD **surrogate baseline reconstruction**에서 DNW profile을 재현하기 위한 현재 Dual-DNW calibration flow를 보관한다.
 
-The flow was introduced after analysis of the 250-point Large DOE showed that the single-energy DNW process could reduce the profile RMSE but did not reproduce the SDE baseline DNW width and junction-side tail at the same time.
+본 flow는 실제 ST foundry recipe를 복원하는 것이 아니다. 공개 문헌과 SDE baseline target을 기준으로, SProcess에서 전기적으로 동등한 target doping profile을 재현하기 위한 **surrogate process calibration**이다.
 
-This directory is a calibration/reconstruction workspace. It is **not** a reconstruction of an ST foundry recipe and it is **not yet** the frozen surrogate baseline.
+현재 단계는 최종 baseline freeze 이전의 profile calibration 단계이다.
 
-## Why dual DNW was introduced
+---
 
-The 250-point single-energy DNW DOE showed the following trends inside the sampled parameter space:
+## 2. Dual-DNW를 도입한 이유
 
-- Increasing DNW dose strongly reduced the profile score/RMSE.
-- The same dose increase also raised the DNW peak concentration and tended to keep the profile too narrow.
-- The best-score candidates still had substantially smaller DNW equivalent sigma than the SDE target.
-- Junction-side PActive remained insufficient near the SDE PW/DNW crossing.
-- Increasing thermal budget improved PW matching more clearly than DNW width.
-- Separate ramp-RTA checks produced only small changes in DNW width and junction-side slope.
+기존 single-energy DNW 기반 250-point Large DOE를 분석한 결과, score/RMSE를 낮추는 방향과 SDE target의 물리적 profile shape을 재현하는 방향이 완전히 일치하지 않았다.
 
-Therefore the remaining mismatch was treated as a profile-shape freedom problem rather than something to solve only by increasing RTA or continuing the same single-energy DNW sweep.
+주요 확인 사항:
 
-## Dual-DNW definition
+- DNW Dose 증가는 profile error를 줄이는 방향이었지만 DNW peak concentration을 높이고 profile을 더 좁게 만드는 경향이 있었다.
+- 최저-score candidate에서도 DNW peak가 SDE target보다 높고, junction-side PActive가 부족했다.
+- 250개 DOE 전체에서 DNW equivalent sigma의 최대값도 SDE target에 도달하지 못했다.
+- 높은 thermal budget과 ramp 적용은 PW profile에는 영향을 주었지만 DNW width와 junction-side slope 개선은 제한적이었다.
+- 따라서 현재 sampled range에서는 single-energy DNW의 main peak와 junction-side tail을 동시에 맞추기 어렵다고 판단하였다.
 
-The DNW is split into two phosphorus implants:
+이 결과를 바탕으로 DNW를 두 개의 phosphorus implant로 분리하였다.
 
-1. **Fixed/Main DNW**
-   - Energy: `DNW_E`
-   - Dose fraction: `DNW_FIXED_FRAC = 1 - DNW_TRIM_FRAC`
-   - Primary role: retain/control the main DNW body and ~1 um peak.
+### Fixed/Main DNW
 
-2. **Trim/Assist DNW**
-   - Energy: `DNW_TRIM_E`
-   - Dose fraction: `DNW_TRIM_FRAC`
-   - Primary role: strengthen the shallow/junction-side phosphorus tail and broaden the combined DNW profile.
+- Energy: `DNW_E`
+- Dose fraction: `DNW_FIXED_FRAC = 1 - DNW_TRIM_FRAC`
+- 역할: DNW main body와 약 1 um 부근의 main peak 형성
 
-The total DNW dose remains:
+### Trim/Assist DNW
 
-`DNW_DOSE = DNW_FIXED_DOSE + DNW_TRIM_DOSE`
+- Energy: `DNW_TRIM_E`
+- Dose fraction: `DNW_TRIM_FRAC`
+- 역할: shallow/junction-side phosphorus tail 보강 및 전체 DNW profile 폭 확장
 
-No anneal is inserted between the two DNW implants. Both DNW components, both PW components, and the NW share the same common WELL RTA.
+총 DNW dose는 다음 관계를 유지한다.
 
-## SWB parameters used by the current split flow
+```text
+DNW_DOSE = DNW_FIXED_DOSE + DNW_TRIM_DOSE
+```
 
-Stage 1 contains no DOE SWB parameters.
+두 DNW implant 사이에 별도 anneal은 없다. DNW, PW, NW implant 이후 **하나의 common WELL RTA**를 적용한다.
 
-Stage 2 uses:
+---
 
-- `DNW_DOSE`
-- `DNW_E`
-- `DNW_TRIM_E`
-- `DNW_TRIM_FRAC`
-- `PW_TRIM_E`
-- `PW_FIXED_E`
-- `PW_TRIM_FRAC`
-- `PW_TOTAL_DOSE`
-- `RTA_T`
-- `RTA_t`
+## 3. 현재 권장 SProcess 실행 구조
 
-`DNW_FIXED_FRAC`, `DNW_FIXED_DOSE`, `DNW_TRIM_DOSE`, `PW_FIXED_FRAC`, `PW_FIXED_DOSE`, and `PW_TRIM_DOSE` are derived inside the command.
+현재 DOE에서는 STI까지의 공통 공정을 매 experiment마다 반복하지 않는다.
 
-`PW_FIXED_FRAC` is **not** an SWB parameter in this flow. It is calculated internally as `1 - PW_TRIM_FRAC`, so only `PW_TRIM_FRAC` is imported/swept for the PW dose split.
+```text
+SProcess Stage 1
+SOI definition
+-> STI etch/fill
+-> STI densification
+-> restart-capable TDR 저장
+          |
+          v
+SProcess Stage 2 x DOE cases
+restart TDR load
+-> Dual DNW
+-> PW
+-> NW
+-> common WELL RTA
+-> post-RTA PLX
+-> local BOX removal
+-> P+ implant
+-> fixed spike
+-> final PLX
+          |
+          v
+SVisualPy profile screening
+```
 
-## Files
+### Stage 1
 
-### CMP_SPAD_DualDNW_SProcess_v0.2_Stage1_CommonSTISeed.txt
+파일:
 
-Current recommended Stage 1 for the DOE split/restart flow.
+```text
+CMP_SPAD_DualDNW_SProcess_v0.2_Stage1_CommonSTISeed.txt
+```
 
-It runs only the common front-end:
+역할:
 
-`SOI definition -> STI etch/fill -> STI densification`
+- SOI structure 생성
+- native STI 형성
+- STI densification
+- 공통 post-STI 상태 저장
 
-and saves:
+출력:
 
-`n@node@_STI_RESTART_fps.tdr`
+```text
+n<node>_STI_RESTART_fps.tdr
+```
 
-using:
+저장 command:
 
-`struct tdr=n@node@_STI_RESTART restart`
+```tcl
+struct tdr=n@node@_STI_RESTART restart
+```
 
-The explicit `restart` option is intentional. Do not add `!restart`, `!Gas`, or `!interfaces`, because those options remove information required for exact Sentaurus Process restart continuation.
+`!restart`, `!Gas`, `!interfaces`는 사용하지 않는다.
 
-### CMP_SPAD_DualDNW_SProcess_v0.2_Stage2_DOE_PLX_only.txt
+Stage 1에는 DOE SWB Parameter가 없다. Workbench graph에서 Stage 1은 DOE branching 앞에서 **한 번만 실행**되어야 한다.
 
-Current recommended Stage 2 for the 96-case Dual-DNW DOE.
+### Stage 2
+
+파일:
+
+```text
+CMP_SPAD_DualDNW_SProcess_v0.2_Stage2_DOE_PLX_only.txt
+```
 
 Workbench dependency:
 
-`#setdep @node|sprocess1@`
+```tcl
+#setdep @node|sprocess1@
+```
 
-The stage resolves the upstream seed as:
+Stage 1 seed를 다음 방식으로 읽는다.
 
-`n@node|sprocess1@_STI_RESTART_fps.tdr`
+```tcl
+set SEED_NODE @node|sprocess1@
+set SEED_TDR  n${SEED_NODE}_STI_RESTART_fps.tdr
 
-and loads it with `init tdr=...`.
+if {![file exists $SEED_TDR]} {
+   error "Required common STI restart TDR not found: $SEED_TDR"
+}
 
-A file-existence guard is included. If the Stage 1 restart TDR is not available, Stage 2 stops with an error instead of silently starting from a fresh structure.
+init tdr=$SEED_TDR
+```
 
-Stage 2 intentionally contains none of the following:
+Stage 2에는 다음 공정이 의도적으로 존재하지 않는다.
 
 - `line clear`
-- initial SOI `region` creation
+- initial SOI `region` 생성
 - `M_STI`
-- STI silicon/BOX/bulk etch
+- STI etch
 - STI oxide fill
 - STI densification
 
-After the restart load, it begins from the well-mask definitions and Dual-DNW/PW/NW implants.
+따라서 Stage 2는 새 구조를 생성하지 않고 Stage 1에서 저장된 동일 post-STI state에서 바로 well implant를 시작한다.
 
-This split is intended to guarantee that the common STI process is executed once while the 96 DOE branches start from the same post-STI/densification state.
+---
 
+## 4. 현재 SWB Parameter
 
+Stage 2에서 사용하는 SWB Parameter는 다음 10개이다.
 
-Based on the Large_DOE PLX-only SProcess flow.
+```text
+DNW_DOSE
+DNW_E
+DNW_TRIM_E
+DNW_TRIM_FRAC
+PW_TRIM_E
+PW_FIXED_E
+PW_TRIM_FRAC
+PW_TOTAL_DOSE
+RTA_T
+RTA_t
+```
 
-Changes from the single-energy Large DOE version are intentionally limited to the DNW module:
+### DNW derived values
 
-- `DNW_DOSE` is interpreted as total DNW dose.
-- `DNW_TRIM_E` and `DNW_TRIM_FRAC` are added as SWB parameters.
-- `DNW_FIXED_FRAC = 1 - DNW_TRIM_FRAC`.
-- The original one-shot DNW implant is replaced by fixed/main + trim/assist phosphorus implants.
-- Existing PW, STI, NW, common RTA, PLX outputs, P+ module, contacts, and geometry are preserved.
+```tcl
+set DNW_FIXED_FRAC [expr 1.0-$DNW_TRIM_FRAC]
+set DNW_FIXED_DOSE [expr $DNW_DOSE*$DNW_FIXED_FRAC]
+set DNW_TRIM_DOSE  [expr $DNW_DOSE*$DNW_TRIM_FRAC]
+```
 
-The command is PLX-first and is intended for calibration screening rather than direct final SDevice use.
+### PW derived values
 
-### CMP_SPAD_DualDNW_ProfileScreening_SVisualPy_v0.1.py
+`PW_FIXED_FRAC`는 SWB Parameter가 아니다.
 
-Dual-DNW profile-screening script.
+```tcl
+set PW_FIXED_FRAC [expr 1.0-$PW_TRIM_FRAC]
+set PW_FIXED_DOSE [expr $PW_TOTAL_DOSE*$PW_FIXED_FRAC]
+set PW_TRIM_DOSE  [expr $PW_TOTAL_DOSE*$PW_TRIM_FRAC]
+```
 
-Detailed metrics remain in the generated metrics text file, but only the following short values are emitted to the SWB DOE table:
+따라서 DOE CSV에도 `PW_FIXED_FRAC`를 추가하지 않는다.
 
-- `SCORE`: composite profile-matching score, lower is better. Not percent error.
-- `PW_RP`: interior PW main-peak depth [nm].
-- `PW_PK_R`: PW peak / SDE PW peak.
-- `DNW_RP`: DNW main-peak depth [nm].
-- `DNW_PK_R`: DNW peak / SDE DNW peak.
-- `DNW_SIG`: DNW equivalent sigma [nm].
-- `JUNC`: PW/DNW metallurgical crossing [nm].
-- `P462_R`: PActive at the SDE crossing / SDE target PActive.
-- `SLOPE_R`: DNW junction-side log-slope / SDE target slope.
-- `SPLIT`: two-lobe severity; closer to zero is better.
+---
 
-The composite score uses PW peak/shape, DNW peak/width/shape, crossing, junction-side PActive, junction-side slope, and a split penalty. The post-RTA `A_R_r4p6` profile is the score basis; the final profile is retained for detailed verification.
+## 5. 현재 Dual-DNW calibration 설계
 
-## SDE comparison targets used in the screening script
+현재 structured calibration의 intended design은 다음과 같다.
 
-- PW peak depth: 109.3 nm
-- PW peak concentration: 5.95e17 cm^-3
-- PW sigma target: 200 nm
-- DNW peak depth: 1017.3 nm
-- DNW peak concentration: 3.15e17 cm^-3
-- DNW sigma target: 380.6 nm
-- Analytic PW/DNW crossing: 462.6966588130754 nm
+### Sweep
 
-These are surrogate baseline calibration targets/constraints and must not be represented as proprietary foundry process values.
+```text
+DNW_DOSE      = 2.60e13 / 2.80e13 / 3.00e13 cm^-2
+DNW_E         = 935 / 955 keV
+DNW_TRIM_E    = 650 / 750 keV
+DNW_TRIM_FRAC = 0.15 / 0.25 / 0.35 / 0.45
+PW_TRIM_FRAC  = 0.500 / 0.525
+```
 
-## Current interpretation rule
+총 조합:
 
-Do not select a final candidate by SCORE alone. Review the top-score group together with:
+```text
+3 x 2 x 2 x 4 x 2 = 96 cases
+```
 
-- DNW sigma
-- junction-side PActive ratio
-- DNW junction-side slope
-- split severity
-- PW/DNW crossing
+### 이번 calibration에서 고정
 
-After profile screening, selected candidates still require a TDR-enabled SProcess rerun and SDevice verification of VBD and the 15.6 V SCR condition before any surrogate baseline freeze.
+```text
+PW_TRIM_E     = 85 keV
+PW_FIXED_E    = 36 keV
+PW_TOTAL_DOSE = 2.06e13 cm^-2
+RTA_T         = 1050 C
+RTA_t         = 30 s
+```
+
+위 DNW 범위는 **surrogate exploration range**이며 최종 공정값이 아니다.
+
+현재 단계에서는 implant profile 자체의 영향을 분리하기 위해 common WELL RTA를 고정한다.
+
+---
+
+## 6. PLX 출력
+
+Stage 2는 profile-first screening을 위해 TDR 대신 PLX를 중심으로 출력한다.
+
+### Before common WELL RTA
+
+```text
+n@node@_B_R_r0.plx
+n@node@_B_R_r4p6.plx
+n@node@_B_R_r13.plx
+```
+
+### After common WELL RTA
+
+```text
+n@node@_A_R_r0.plx
+n@node@_A_R_r4p6.plx
+n@node@_A_R_r13.plx
+```
+
+### Final process
+
+```text
+n@node@_F_r0.plx
+n@node@_F_r4p6.plx
+n@node@_F_r13.plx
+```
+
+주 profile comparison 위치는:
+
+```text
+r = 4.6875 um
+```
+
+이다.
+
+Dual-DNW calibration의 primary score는 **post-RTA `A_R_r4p6` profile**을 기준으로 계산한다. Final profile은 후속 P+ 및 spike 이후 변화 확인용으로 유지한다.
+
+---
+
+## 7. SVisualPy profile screening
+
+파일:
+
+```text
+CMP_SPAD_DualDNW_ProfileScreening_SVisualPy_v0.1.py
+```
+
+SVisualPy는 SProcess PLX와 SDE surrogate baseline target을 비교한다.
+
+상세 metric은 `n<node>_profile_metrics.txt`에 저장하고, SWB DOE table에는 다음 10개 핵심값만 표시한다.
+
+| Output | 의미 | 목표 방향 |
+|---|---|---|
+| `SCORE` | 종합 profile matching score | 낮을수록 좋음 |
+| `PW_RP` | PW interior main peak depth [nm] | 109.3 nm 부근 |
+| `PW_PK_R` | PW peak / SDE PW peak | 1에 가까울수록 좋음 |
+| `DNW_RP` | DNW main peak depth [nm] | 1017.3 nm 부근 |
+| `DNW_PK_R` | DNW peak / SDE DNW peak | 1에 가까울수록 좋음 |
+| `DNW_SIG` | DNW equivalent sigma [nm] | 380.6 nm 부근 |
+| `JUNC` | PW/DNW metallurgical crossing [nm] | 462.7 nm 부근 |
+| `P462_R` | SDE crossing 위치의 PActive / target | 1에 가까울수록 좋음 |
+| `SLOPE_R` | DNW junction-side log slope / target | 1에 가까울수록 좋음 |
+| `SPLIT` | two-lobe severity | 0에 가까울수록 좋음 |
+
+### PW peak 처리
+
+기존 extractor에서 PW surface point가 global maximum이면 `PW_RP = 0 nm`로 잡히는 문제가 있었다.
+
+현재 script는 PW main peak를:
+
+```text
+30 nm <= depth <= 250 nm
+```
+
+범위에서 별도로 추출한다.
+
+surface/global maximum은 상세 metric에 별도로 보존한다.
+
+### Two-lobe detection
+
+Dual-energy implant가 넓은 single profile이 아니라 두 개의 분리된 peak를 만들 수 있으므로 PW와 DNW 모두 second peak와 valley를 분석한다.
+
+`SPLIT`은 second-peak strength와 valley depth를 함께 반영한 severity metric이다.
+
+---
+
+## 8. Composite SCORE
+
+`SCORE`는 percent error가 아니다.
+
+모든 component를 normalized penalty로 바꾼 뒤 가중합하여 계산한다.
+
+현재 weight:
+
+```text
+PW
+  PW Rp                5 %
+  PW peak              4 %
+  PW shape             6 %
+
+DNW
+  DNW Rp               8 %
+  DNW peak             8 %
+  DNW sigma           12 %
+  DNW shape           17 %
+
+Junction / Tail
+  crossing            10 %
+  PActive @ crossing  13 %
+  junction slope      12 %
+
+Split penalty          5 %
+```
+
+총합:
+
+```text
+100 %
+```
+
+따라서 SCORE가 낮을수록 전체 SDE target profile에 가까운 candidate라는 의미지만, **SCORE 하나만으로 최종 candidate를 결정하지 않는다.**
+
+상위 candidate에서는 반드시 다음을 함께 확인한다.
+
+- `DNW_SIG`
+- `P462_R`
+- `SLOPE_R`
+- `SPLIT`
+- `JUNC`
+- 실제 PLX shape
+
+---
+
+## 9. SDE comparison targets
+
+현재 SVisualPy에서 사용하는 target은 다음과 같다.
+
+| Target | 값 | 분류 |
+|---|---:|---|
+| PW main peak depth | 109.3 nm | SDE baseline profile target |
+| PW peak concentration | 5.95e17 cm^-3 | SDE baseline profile target |
+| PW sigma | 200 nm | surrogate analytic target |
+| DNW main peak depth | 1017.3 nm | SDE baseline profile target |
+| DNW peak concentration | 3.15e17 cm^-3 | SDE baseline profile target |
+| DNW sigma | 380.6 nm | SDE baseline profile target |
+| PW/DNW crossing | 462.6966588 nm | analytic baseline crossing |
+
+이 값들은 surrogate baseline calibration target이며 proprietary foundry process value로 해석하지 않는다.
+
+또한 `BActive = PActive` metallurgical crossing은 SCR center와 동일하지 않다.
+
+---
+
+## 10. Candidate selection 이후 flow
+
+Dual-DNW profile screening은 최종 electrical equivalence를 보장하지 않는다.
+
+최종 flow는 다음과 같다.
+
+```text
+96-case Dual-DNW profile screening
+        |
+        v
+top candidate group 선정
+        |
+        v
+PW Fixed Energy fine tuning
+        |
+        v
+PW Trim Energy / junction fine tuning
+        |
+        v
+TDR-enabled SProcess rerun
+        |
+        v
+SDevice verification
+  - VBD
+  - reverse I-V
+  - V156 SCR position/width
+  - electric field
+  - avalanche / PEB-related behavior
+        |
+        v
+true-FINE recheck
+        |
+        v
+surrogate baseline freeze
+```
+
+최종 baseline freeze 전까지 profile score 최소 조건을 곧바로 최종 공정 조건으로 해석하지 않는다.
+
+---
+
+## 11. 현재 파일
+
+```text
+Dual_DNW/
+├─ CMP_SPAD_DualDNW_SProcess_v0.2_Stage1_CommonSTISeed.txt
+├─ CMP_SPAD_DualDNW_SProcess_v0.2_Stage2_DOE_PLX_only.txt
+├─ CMP_SPAD_DualDNW_ProfileScreening_SVisualPy_v0.1.py
+└─ README.md
+```
+
+이 폴더에서는 위 split/restart v0.2 SProcess flow를 현재 기준으로 사용한다.
