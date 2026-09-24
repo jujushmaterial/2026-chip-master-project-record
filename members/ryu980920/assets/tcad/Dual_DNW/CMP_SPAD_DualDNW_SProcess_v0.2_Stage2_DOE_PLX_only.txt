@@ -1,0 +1,289 @@
+#=============================================================================
+# CMP FD-SOI SPAD / Dual-DNW calibration
+# SProcess v0.2 - Stage 2: DOE FROM COMMON STI RESTART
+#
+# REQUIRED GRAPH
+#   sprocess1 : Stage 1 common STI seed (run once)
+#       |
+#       v
+#   sprocess  : this Stage 2 DOE command
+#
+# REQUIRED INPUT
+#   n@node|sprocess1@_STI_RESTART_fps.tdr
+#
+# SAFETY
+#   - No SOI region creation.
+#   - No line clear.
+#   - No M_STI.
+#   - No STI etch/fill.
+#   - No STI densification.
+#   - If the seed TDR is not present, this command FAILS immediately.
+#=============================================================================
+
+#setdep @node|sprocess1@
+
+set SEED_NODE @node|sprocess1@
+set SEED_TDR  n${SEED_NODE}_STI_RESTART_fps.tdr
+
+puts "=================================================="
+puts "DUAL-DNW DOE RESTART"
+puts "SEED_NODE=${SEED_NODE}"
+puts "SEED_TDR=${SEED_TDR}"
+puts "DOE_NODE=@node@"
+puts "=================================================="
+
+if {![file exists $SEED_TDR]} {
+   error "Required common STI restart TDR not found: $SEED_TDR"
+}
+
+# Load the exact post-STI/densification state from Stage 1.
+# Do not create a fresh SOI structure in this command.
+init tdr=$SEED_TDR
+
+# Clear any stored mask state before defining DOE-stage masks.
+mask clear
+
+#=============================================================================
+# 0. SWB parameters
+#=============================================================================
+
+set DNW_DOSE       @DNW_DOSE@
+set DNW_E          @DNW_E@
+set DNW_TRIM_E     @DNW_TRIM_E@
+set DNW_TRIM_FRAC  @DNW_TRIM_FRAC@
+
+set DNW_FIXED_FRAC [expr 1.0-$DNW_TRIM_FRAC]
+
+if {($DNW_TRIM_FRAC < 0.0) || ($DNW_TRIM_FRAC > 1.0)} {
+   error "DNW_TRIM_FRAC must satisfy 0.0 <= DNW_TRIM_FRAC <= 1.0"
+}
+
+set DNW_FIXED_DOSE [expr $DNW_DOSE*$DNW_FIXED_FRAC]
+set DNW_TRIM_DOSE  [expr $DNW_DOSE*$DNW_TRIM_FRAC]
+
+set PW_TOTAL_DOSE  @PW_TOTAL_DOSE@
+set PW_TRIM_FRAC   @PW_TRIM_FRAC@
+set PW_FIXED_FRAC  @PW_FIXED_FRAC@
+
+set PW_FRAC_SUM [expr $PW_FIXED_FRAC+$PW_TRIM_FRAC]
+
+if {($PW_TRIM_FRAC < 0.0) || ($PW_TRIM_FRAC > 1.0)} {
+   error "PW_TRIM_FRAC must satisfy 0.0 <= PW_TRIM_FRAC <= 1.0"
+}
+
+if {($PW_FIXED_FRAC < 0.0) || ($PW_FIXED_FRAC > 1.0)} {
+   error "PW_FIXED_FRAC must satisfy 0.0 <= PW_FIXED_FRAC <= 1.0"
+}
+
+if {abs($PW_FRAC_SUM-1.0) > 1.0e-9} {
+   error "PW_FIXED_FRAC + PW_TRIM_FRAC must equal 1.0"
+}
+
+set PW_FIXED_DOSE  [expr $PW_TOTAL_DOSE*$PW_FIXED_FRAC]
+set PW_TRIM_DOSE   [expr $PW_TOTAL_DOSE*$PW_TRIM_FRAC]
+
+set PW_FIXED_E     @PW_FIXED_E@
+set PW_TRIM_E      @PW_TRIM_E@
+
+set RTA_T          @RTA_T@
+set RTA_t          @RTA_t@
+
+#=============================================================================
+# 1. Fixed surrogate-process constants
+#=============================================================================
+
+set NW_DOSE   7.75e14
+set NW_E      400
+
+set PP_DOSE   8.21e13
+set PP_E      5
+
+set SPIKE_T   1050
+set SPIKE_t   1.5
+
+set IMP_TILT  7
+set IMP_ROT   0
+set IMP_MROT  4
+
+set T_USI       0.007
+set T_BOX       0.025
+
+set T_USI_ETCH [expr 1.001*$T_USI]
+set T_BOX_ETCH [expr 1.001*$T_BOX]
+
+set LOCAL_BOX_REMOVE_SEGS {
+  -0.100  0.550
+  12.800 17.000
+  17.600 18.800
+  19.400 24.100
+}
+
+set R_PW_E      12.50
+set R_DNW_E     16.30
+set R_NW_S      14.20
+set R_NW_E      15.40
+set R_PPAN_E     0.55
+set R_SUBPW_S   17.60
+set R_SUBPW_E   18.80
+set R_SUBC_S    17.80
+set R_SUBC_E    18.60
+
+set AXIS_EXT    -0.10
+set R_PROFILE_C 4.6875
+
+puts "=== CMP DUAL-DNW SWB RESOLVED PARAMETERS ==="
+puts "DNW_DOSE=$DNW_DOSE"
+puts "DNW_E=$DNW_E"
+puts "DNW_TRIM_E=$DNW_TRIM_E"
+puts "DNW_TRIM_FRAC=$DNW_TRIM_FRAC"
+puts "DNW_FIXED_FRAC=$DNW_FIXED_FRAC"
+puts "DNW_FIXED_DOSE=$DNW_FIXED_DOSE"
+puts "DNW_TRIM_DOSE=$DNW_TRIM_DOSE"
+puts "PW_TOTAL_DOSE=$PW_TOTAL_DOSE"
+puts "PW_FIXED_E=$PW_FIXED_E"
+puts "PW_TRIM_E=$PW_TRIM_E"
+puts "PW_FIXED_FRAC=$PW_FIXED_FRAC"
+puts "PW_TRIM_FRAC=$PW_TRIM_FRAC"
+puts "PW_FIXED_DOSE=$PW_FIXED_DOSE"
+puts "PW_TRIM_DOSE=$PW_TRIM_DOSE"
+puts "RTA_T=$RTA_T"
+puts "RTA_t=$RTA_t"
+puts "============================================="
+
+#=============================================================================
+# 2. DOE-stage masks
+#=============================================================================
+
+mask name=M_PW      left=$AXIS_EXT   right=$R_PW_E      negative
+mask name=M_DNW     left=$AXIS_EXT   right=$R_DNW_E     negative
+mask name=M_NW      left=$R_NW_S     right=$R_NW_E      negative
+mask name=M_PW_SUB  left=$R_SUBPW_S  right=$R_SUBPW_E   negative
+
+#=============================================================================
+# 3. Dual DNW implant
+#=============================================================================
+
+implant Phosphorus energy=${DNW_E}<keV> dose=${DNW_FIXED_DOSE}<cm-2>    tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree>    mult.rot=${IMP_MROT} mask=M_DNW
+
+implant Phosphorus energy=${DNW_TRIM_E}<keV> dose=${DNW_TRIM_DOSE}<cm-2>    tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree>    mult.rot=${IMP_MROT} mask=M_DNW
+
+#=============================================================================
+# 4. PW implant
+#=============================================================================
+
+implant Boron energy=${PW_FIXED_E}<keV> dose=${PW_FIXED_DOSE}<cm-2>    tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree>    mult.rot=${IMP_MROT} mask=M_PW
+
+implant Boron energy=${PW_TRIM_E}<keV> dose=${PW_TRIM_DOSE}<cm-2>    tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree>    mult.rot=${IMP_MROT} mask=M_PW
+
+implant Boron energy=${PW_FIXED_E}<keV> dose=${PW_FIXED_DOSE}<cm-2>    tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree>    mult.rot=${IMP_MROT} mask=M_PW_SUB
+
+implant Boron energy=${PW_TRIM_E}<keV> dose=${PW_TRIM_DOSE}<cm-2>    tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree>    mult.rot=${IMP_MROT} mask=M_PW_SUB
+
+#=============================================================================
+# 5. N-Well implant
+#=============================================================================
+
+implant Phosphorus energy=${NW_E}<keV> dose=${NW_DOSE}<cm-2>    tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree>    mult.rot=${IMP_MROT} mask=M_NW
+
+#=============================================================================
+# 6. Before common WELL RTA PLX
+#=============================================================================
+
+SetPlxList { BTotal BActive PTotal PActive }
+
+WritePlx n@node@_B_R_r0.plx   y=0.0
+WritePlx n@node@_B_R_r4p6.plx y=${R_PROFILE_C}
+WritePlx n@node@_B_R_r13.plx  y=13.0
+
+#=============================================================================
+# 7. ONE common WELL RTA
+#=============================================================================
+
+diffuse temperature=${RTA_T}<C> time=${RTA_t}<s>
+grid remesh
+
+WritePlx n@node@_A_R_r0.plx   y=0.0
+WritePlx n@node@_A_R_r4p6.plx y=${R_PROFILE_C}
+WritePlx n@node@_A_R_r13.plx  y=13.0
+
+#=============================================================================
+# 8. Local UpperSi / BOX removal
+#=============================================================================
+
+mask clear
+mask name=M_LOCALBOX segments=$LOCAL_BOX_REMOVE_SEGS negative
+
+etch Silicon anisotropic thickness=${T_USI_ETCH}<um> mask=M_LOCALBOX
+etch Oxide   anisotropic thickness=${T_BOX_ETCH}<um> mask=M_LOCALBOX
+
+grid remesh
+
+#=============================================================================
+# 9. Shallow P+ contact implants
+#=============================================================================
+
+mask clear
+
+mask name=M_PP_AN  left=$AXIS_EXT right=$R_PPAN_E negative
+mask name=M_PP_SUB left=$R_SUBC_S right=$R_SUBC_E negative
+
+implant Boron energy=${PP_E}<keV> dose=${PP_DOSE}<cm-2>    tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree>    mult.rot=${IMP_MROT} mask=M_PP_AN
+
+implant Boron energy=${PP_E}<keV> dose=${PP_DOSE}<cm-2>    tilt=${IMP_TILT}<degree> rotation=${IMP_ROT}<degree>    mult.rot=${IMP_MROT} mask=M_PP_SUB
+
+#=============================================================================
+# 10. Fixed P+ activation spike
+#=============================================================================
+
+diffuse temperature=${SPIKE_T}<C> time=${SPIKE_t}<s>
+grid remesh
+
+#=============================================================================
+# 11. Final PLX
+#=============================================================================
+
+SetPlxList { BTotal BActive PTotal PActive }
+
+WritePlx n@node@_F_r0.plx   y=0.0
+WritePlx n@node@_F_r4p6.plx y=${R_PROFILE_C}
+WritePlx n@node@_F_r13.plx  y=13.0
+
+#=============================================================================
+# 12. Diagnostics
+#=============================================================================
+
+select z=BTotal
+puts "=== BTotal layers @ r=0 ==="
+layers y=0.0
+puts "=== BTotal layers @ r=4.6875 ==="
+layers y=${R_PROFILE_C}
+puts "=== BTotal layers @ r=13 ==="
+layers y=13.0
+
+select z=PTotal
+puts "=== PTotal layers @ r=0 ==="
+layers y=0.0
+puts "=== PTotal layers @ r=4.6875 ==="
+layers y=${R_PROFILE_C}
+puts "=== PTotal layers @ r=13 ==="
+layers y=13.0
+
+#=============================================================================
+# 13. Contacts
+#=============================================================================
+
+contact clear
+
+contact box name=anode Silicon    xlo=-0.005<um> xhi=0.010<um> ylo=0.00<um> yhi=0.55<um>
+
+contact box name=cathode Silicon    xlo=-0.005<um> xhi=0.010<um> ylo=14.20<um> yhi=15.40<um>
+
+contact box name=substrate Silicon    xlo=-0.005<um> xhi=0.010<um> ylo=17.80<um> yhi=18.60<um>
+
+contact list
+
+puts "=================================================="
+puts "DUAL-DNW DOE CASE COMPLETE"
+puts "SOURCE_SEED=$SEED_TDR"
+puts "DOE_NODE=@node@"
+puts "=================================================="
