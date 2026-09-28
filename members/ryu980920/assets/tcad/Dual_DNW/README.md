@@ -265,7 +265,7 @@ Dual-DNW calibration의 primary score는 **post-RTA `A_R_r4p6` profile**을 기�
 파일:
 
 ```text
-CMP_SPAD_DualDNW_ProfileScreening_SVisualPy_v0.2_PLXPairFix.py
+CMP_SPAD_DualDNW_ProfileScreening_SVisualPy_v0.3_SDEAnchorFix.py
 ```
 
 SVisualPy는 SProcess PLX와 SDE surrogate baseline target을 비교한다.
@@ -434,8 +434,17 @@ surrogate baseline freeze
 Dual_DNW/
 ├─ CMP_SPAD_DualDNW_SProcess_v0.2_Stage1_CommonSTISeed.txt
 ├─ CMP_SPAD_DualDNW_SProcess_v0.2_Stage2_DOE_PLX_only.txt
-├─ CMP_SPAD_DualDNW_ProfileScreening_SVisualPy_v0.2_PLXPairFix.py
+├─ CMP_SPAD_DualDNW_ProfileScreening_SVisualPy_v0.3_SDEAnchorFix.py
 └─ README.md
 ```
 
 이 폴더에서는 위 split/restart v0.2 SProcess flow를 현재 기준으로 사용한다.
+
+
+### SVisualPy v0.3 SDE anchor correction
+
+- `PW_PK_R` uses the extracted SDE PW peak anchor `5.954e17 cm^-3`.
+- `DNW_PK_R` uses the extracted SDE DNW peak anchor `3.147e17 cm^-3`.
+- `P462_R` uses the extracted SDE crossing concentration `1.159e17 cm^-3` at `x=462.6966588130754 nm` as the denominator.
+- PLX paired variables (`BActive x/y`, `PActive x/y`) remain supported.
+- Profile-shape and `SLOPE_R` references still use the analytic Gaussian target until the full SDE reference PLX is directly wired into the script.
