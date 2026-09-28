@@ -265,10 +265,24 @@ Dual-DNW calibration의 primary score는 **post-RTA `A_R_r4p6` profile**을 기�
 파일:
 
 ```text
-CMP_SPAD_DualDNW_ProfileScreening_SVisualPy_v0.1.py
+CMP_SPAD_DualDNW_ProfileScreening_SVisualPy_v0.2_PLXPairFix.py
 ```
 
 SVisualPy는 SProcess PLX와 SDE surrogate baseline target을 비교한다.
+
+### PLX paired-variable compatibility
+
+현재 Sentaurus Visual에서 `WritePlx` 결과가 공통 `X / BActive / PActive` 형태가 아니라 다음과 같이 curve별 x/y pair로 노출될 수 있음을 확인하였다.
+
+```text
+BActive x
+BActive y
+PActive x
+PActive y
+```
+
+v0.2 loader는 두 형식을 모두 지원한다. paired layout에서는 `BActive x`와 `PActive x`를 각각 profile coordinate로, `BActive y`와 `PActive y`를 concentration으로 읽고, 두 coordinate grid가 다를 경우 overlap 구간에서 하나의 공통 grid로 정렬한다.
+
 
 상세 metric은 `n<node>_profile_metrics.txt`에 저장하고, SWB DOE table에는 다음 10개 핵심값만 표시한다.
 
@@ -420,7 +434,7 @@ surrogate baseline freeze
 Dual_DNW/
 ├─ CMP_SPAD_DualDNW_SProcess_v0.2_Stage1_CommonSTISeed.txt
 ├─ CMP_SPAD_DualDNW_SProcess_v0.2_Stage2_DOE_PLX_only.txt
-├─ CMP_SPAD_DualDNW_ProfileScreening_SVisualPy_v0.1.py
+├─ CMP_SPAD_DualDNW_ProfileScreening_SVisualPy_v0.2_PLXPairFix.py
 └─ README.md
 ```
 
