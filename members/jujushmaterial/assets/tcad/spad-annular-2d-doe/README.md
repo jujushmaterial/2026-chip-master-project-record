@@ -4,8 +4,11 @@
 
 ## Status
 
-- 단계: 2D screening DOE setup / initial geometry check
+- 단계: 160-case 2D screening DOE 완료 / 1차 radial-pitch response 분석 완료
 - 상태: In Progress
+- 2D integrated global optimum: 900 nm (Gain_Ref = 1.112922, Reference 대비 +11.292%)
+- Gmax_SCR hotspot maximum: 835 nm
+- preliminary 3D validation set: 750 / 775 / 835 / 900 / 1000 nm
 - final 3D optical claim: 아직 수행하지 않음
 
 ## Core rule
