@@ -47,3 +47,29 @@
 ## Important limitation
 
 2D geometry는 annular 구조의 diametric/radial cross-section을 사용하지만 EMW가 이를 원통대칭으로 회전하여 계산하는 것은 아니다. 2D 결과는 screening용이며, selected candidate는 실제 3D concentric annular SDE/EMW로 검증해야 한다.
+
+
+---
+
+## 11. 2D DOE analysis result — 2026-09-28
+
+- total: 160 cases, RadialPitch 200–1000 nm, 270 nm excluded
+- PatternFF: 15% for all cases
+- first `Gain_Ref > 1`: **730 nm**
+- 2D integrated global optimum: **900 nm**
+- 900 nm `G_SCR_Int=6.714802e+21`
+- 900 nm `Gain_Ref=1.112922` (**+11.292%** vs Reference)
+- global `Gmax_SCR` hotspot: **835 nm**, `3.175725e+21`
+
+900 nm는 finite annular aperture + frozen native-STI geometry에서 얻은 **2D extruded screening optimum**이며 exact 3D concentric-annular optimum으로 확정하지 않는다.
+
+### Analysis files
+
+- [Detailed analysis](CMP_SPAD_A_2D_Annular_RadialPitch_DOE_Analysis_2026-09-28.md)
+- [160-case data](2026-09-28-annular-2d-doe-160cases.csv)
+- [Excel workbook](2026-09-28-annular-2d-doe-analysis.xlsx)
+- [G_SCR_Int plot](2026-09-28-g-scr-int-vs-radial-pitch.svg)
+- [Gmax_SCR plot](2026-09-28-gmax-scr-vs-radial-pitch.svg)
+- [Gain_Ref plot](2026-09-28-gain-ref-vs-radial-pitch.svg)
+
+Preliminary 3D validation set: `750 / 775 / 835 / 900 / 1000 nm`.
