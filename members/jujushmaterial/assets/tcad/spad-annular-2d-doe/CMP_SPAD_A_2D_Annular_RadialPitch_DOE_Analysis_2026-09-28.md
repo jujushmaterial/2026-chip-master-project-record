@@ -137,6 +137,33 @@
 - Reference / Gao Square 480 nm FF15% / Annular 동일 940 nm 3D 비교
 - final optical claim은 3D 결과 사용
 
+
+## 12.1 분석 산출물 패키지 및 plot 표시 규칙
+
+GitHub 기록에는 같은 결과를 다음 세 수준으로 함께 보관한다.
+
+| 구분 | 파일 | 역할 |
+|---|---|---|
+| 원본 scalar data | `2026-09-28-annular-2d-doe-160cases.csv` | 160-case DOE 재분석용 원본 table |
+| 분석 workbook | `2026-09-28-annular-2d-doe-analysis.xlsx` | 데이터, candidate table, 해석, Excel chart 확인/수정 |
+| clean plot image | `2026-09-28-g-scr-int-vs-radial-pitch.svg` | `G_SCR_Int` response |
+| clean plot image | `2026-09-28-gmax-scr-vs-radial-pitch.svg` | `Gmax_SCR` hotspot response |
+| clean plot image | `2026-09-28-gain-ref-vs-radial-pitch.svg` | Reference-normalized response, `Gain_Ref=1` 기준선 포함 |
+
+Plot은 marker를 제거한 single connected line으로 표시한다. 이는 point 수가 160개이므로 marker가 겹쳐 response shape을 가리는 것을 방지하기 위한 시각화 선택이며, 데이터 자체를 smoothing하거나 interpolation한 것이 아니다.
+
+Excel에서 동일 형태를 재현할 때는 다음을 사용한다.
+
+- chart type: **XY Scatter with Straight Lines**
+- x values: `RadPitch_nm`
+- marker: **None**
+- smoothed line: **Off**
+- x-axis: numeric axis
+- `Gain_Ref`에는 `y=1` reference line 추가
+
+일반 Line chart는 category axis를 사용할 수 있으므로 270 nm가 제외된 구간도 동일 간격처럼 보일 수 있다. 실제 DOE pitch spacing을 보존하려면 XY Scatter가 적합하다.
+
+
 ## 12. AI 사용 및 검증
 
 - 사용 AI: ChatGPT

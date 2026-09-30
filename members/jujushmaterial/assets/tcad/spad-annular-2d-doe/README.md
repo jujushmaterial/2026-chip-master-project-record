@@ -76,3 +76,19 @@
 - [Gain_Ref plot](2026-09-28-gain-ref-vs-radial-pitch.svg)
 
 Preliminary 3D validation set: `750 / 775 / 835 / 900 / 1000 nm`.
+
+
+## Repository analysis package
+
+2026-09-28 160-case DOE 분석 결과는 원본/분석/시각화 파일을 분리하여 함께 보관한다.
+
+- raw scalar table: `2026-09-28-annular-2d-doe-160cases.csv`
+- editable analysis workbook: `2026-09-28-annular-2d-doe-analysis.xlsx`
+- clean vector plot image: `2026-09-28-g-scr-int-vs-radial-pitch.svg`
+- clean vector plot image: `2026-09-28-gmax-scr-vs-radial-pitch.svg`
+- clean vector plot image: `2026-09-28-gain-ref-vs-radial-pitch.svg`
+
+Plot은 DOE point marker를 강조하지 않고 **single connected line**으로 표시한다. `Gain_Ref` plot에는 Reference 기준인 `Gain_Ref=1` horizontal line을 포함한다. SVG는 GitHub에서 바로 확인 가능한 vector image이고, XLSX는 데이터와 chart를 편집할 수 있는 분석본이다.
+
+Excel에서 chart를 다시 만들 때는 `RadPitch_nm`을 numeric x-axis로 사용하는 **XY Scatter with Straight Lines**를 권장하며 marker는 `None`으로 설정한다. 일반 Line chart의 category axis를 사용할 경우 270 nm 제외 구간의 실제 x-spacing이 보존되지 않을 수 있다.
+
