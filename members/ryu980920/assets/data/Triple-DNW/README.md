@@ -51,4 +51,4 @@ Main/Trim/Deep Energy와 dose는 surrogate calibration 수준이며 actual found
 - **25-case CSV는 SProcess/SVisualPy 실제 결과**, 81-case CSV는 **SWB 입력 조건**이다. 81-case 결과가 나온 것으로 기록하지 않는다.
 - `TAIL14_R / TAIL16_R / TAIL18_R / TAIL_RMSE`의 비교 기준은 현재 SVisualPy v0.4의 **analytic Gaussian reference**이고, 전체 원본 SDE PLX를 직접 fitting한 결과는 아니다.
 - `P462_R`은 고정 깊이의 PActive ratio이며 SCR 자체는 아니다. profile screening으로 VBD/PEB/ATP/dark 개선을 주장하지 않는다.
-- 원래 45-case 결과 CSV(`1006A.csv`/`1006B.csv`) 및 25-case 실험 **입력 조건** CSV는 현재 이 data 폴더에 미등록이다. 필요한 경우 원본 그대로 추가하고 이 README의 파일 표를 갱신한다.
+- 원래 45-case 결과 CSV(`1006A.csv`/`1006B.csv`) 및 25-case 실험 **입력 조건** CSV는 현재 이 data 폴더에 미등록이다. 2026-10-09 추가로 업로드된 `1008_(1).csv`는 보관 중인 25-case `1008_.csv`와 내용이 정확히 같아 중복 저장하지 않았다. 필요한 경우 원본 그대로 추가하고 이 README의 파일 표를 갱신한다.

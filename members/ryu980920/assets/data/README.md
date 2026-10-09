@@ -6,7 +6,7 @@
 
 | 구분 | 의미 | 연구 질문 | 데이터 폴더 |
 |---|---|---|---|
-| **Single-DNW / Large DOE** | DNW implant를 단일 profile component로 취급하는 초기 공정 탐색 | 한 개의 DNW 조건과 PW/RTA 조절만으로 SDE surrogate DNW profile을 재현할 수 있는가? | 이번 data 정리 시점에 원본 CSV 미등록. 기존 코드: [Large_DOE](../tcad/Large_DOE/) |
+| **Single-DNW / Large DOE** | DNW implant를 단일 profile component로 취급하는 초기 공정 탐색 | 한 개의 DNW 조건과 PW/RTA 조절만으로 SDE surrogate DNW profile을 재현할 수 있는가? | [Single-DNW/](Single-DNW/) — 250-case 실제 결과 등록. 코드: [Large_DOE](../tcad/Large_DOE/) |
 | **Dual-DNW** | DNW를 **Main + Shallow Trim** 두 phosphorus implant component로 분리 | junction-side와 약 1 µm main peak 및 폭을 하나의 implant보다 유연하게 조절할 수 있는가? | [Dual-DNW/](Dual-DNW/) |
 | **Triple-DNW** | DNW를 **Main + Shallow Trim + Deep** 세 phosphorus implant component로 분리 | Dual-DNW에서 남은 1.4–1.8 µm deep-tail 부족까지 별도 Deep component로 조절할 수 있는가? | [Triple-DNW/](Triple-DNW/) |
 
@@ -20,6 +20,8 @@
 
 각 하위 폴더의 `README.md`를 먼저 읽는다. 같은 실험의 A/B 분할 파일은 **하나의 DOE**로 묶어 설명하고, `입력 조건(미실행 가능)`과 `실제 결과(실행 완료)`를 구별한다.
 
-**현재 이 폴더에 등록된 연구 데이터:** Triple-DNW 25-case 실행 결과 1개와 후속 81-case 입력 조건 2개(A 40행/B 41행). Dual-DNW 64/108-case 및 Triple-DNW 45-case의 과거 원본 CSV는 현재 data 폴더에 미등록이며, 없던 데이터를 만들어 추가하지 않는다.
+**현재 보관한 CSV:** Single-DNW 250-case 실제 결과 1개, Dual-DNW 108-case 결과 2개(A/B, 각각 54행), Triple-DNW 25-case 실제 결과 1개와 81-case SWB 입력 조건 2개(40/41행).
+
+**현재 미등록:** Dual-DNW 64-case 실제 결과(`Dual.csv` 또는 `Dual(1).csv`), Triple-DNW 45-case 결과(`1006A.csv`/`1006B.csv`), 진행 예정인 81-case 결과. 발표자료에 등장하는 250-case 이전의 PW/DNW 개별 공정 민감도 분석은 별도의 원시 결과 CSV가 있으면 추후 단계별로 추가한다.
 
 자세한 연구 배경: [공유 SPAD 연구계획서](../../../../shared/decisions/SPAD_연구계획서.md) · [2026-10-09 B 연구일지](../../timeline/2026-10/2026-10-09.md).
