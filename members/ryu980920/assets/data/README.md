@@ -20,8 +20,8 @@
 
 각 하위 폴더의 `README.md`를 먼저 읽는다. 실제 결과 CSV가 A/B로 나뉜 경우 **하나의 DOE**로 묶어 설명한다. DOE 설계·입력 단계의 사실은 `timeline/`에 기록하고, `assets/data/`의 CSV는 **결과를 확보·분석한 뒤** 등록한다.
 
-**현재 보관한 CSV:** 실제 시뮬레이션 결과만 보관한다. Single-DNW 250-case 결과 1개, Dual-DNW 108-case 결과 2개(A/B 각각 54행), Triple-DNW 25-case 결과 1개, 총 **4개 CSV**.
+**현재 보관한 CSV:** 실제 시뮬레이션 결과만 보관한다. Single-DNW 250-case 결과 1개, Dual-DNW 64-case 결과 1개와 108-case 결과 A/B 2개, Triple-DNW 45-case 결과 A/B 2개 및 25-case 결과 1개, 총 **7개 CSV**.
 
-**현재 미등록:** Dual-DNW 64-case 실제 결과(`Dual.csv` 또는 `Dual(1).csv`), Triple-DNW 45-case 결과(`1006A.csv`/`1006B.csv`), 진행 예정인 81-case 결과. **81-case 40/41개 입력 조건 CSV는 결과 확보 전이므로 2026-10-09에 GitHub에서 삭제했다.** 발표자료에 등장하는 250-case 이전의 PW/DNW 개별 공정 민감도 분석은 별도의 원시 결과 CSV가 있으면 추후 단계별로 추가한다.
+**현재 미등록:** 진행 예정인 Triple-DNW 81-case 결과. Dual-DNW 64-case (`64DOE.csv`)와 Triple-DNW 45-case (`1006_A.csv`, `1006_B.csv`) 실제 결과는 새로 등록함. **81-case 40/41개 입력 조건 CSV는 결과 확보 전이므로 2026-10-09에 GitHub에서 삭제했다.** 발표자료에 등장하는 250-case 이전의 PW/DNW 개별 공정 민감도 분석은 별도의 원시 결과 CSV가 있으면 추후 단계별로 추가한다.
 
 자세한 연구 배경: [공유 SPAD 연구계획서](../../../../shared/decisions/SPAD_연구계획서.md) · [2026-10-09 B 연구일지](../../timeline/2026-10/2026-10-09.md).

@@ -20,6 +20,7 @@ Dual-DNW의 **Main + Shallow Trim**만으로는 약 1 µm main peak 정합 후�
 
 | 파일 | 종류·구성 | 얻은 목적 / 진행 상태 |
 |---|---|---|
+| [1006_A.csv](1006_A.csv) + [1006_B.csv](1006_B.csv) | **실제 45-case 결과 A 23개 + B 22개**(SWB header 포함) | Dual-DNW의 deep tail 부족을 해결하기 위해 **Deep E 1300/1400/1500/1600/1700 keV × Deep 절대 Dose 1.0–5.0e12 cm⁻²(9수준)** 실험. Main/Trim 절대 Dose 고정, Deep dose를 추가하며 Total dose 증가. 1700 keV SCORE 최저 후보는 1.8 µm overshoot, 1500 keV Tail RMSE 최저 후보는 T14/T16/T18 균형이 좋아 **25-case 기준 후보**가 됨. **하나의 DOE이며 중복 조합 없음** |
 | [2026-10-09-triple-dnw-main-to-deep-25cases-results-raw.csv](2026-10-09-triple-dnw-main-to-deep-25cases-results-raw.csv) | **실행 결과** 25개 (`1008_.csv` 원본 보존, SWB header 3행 포함) | 45-case Balanced 후보에서 시작한 **Total 고정 Main→Deep 재분배**의 실제 경향·최저 SCORE·최저 Tail RMSE 후보를 비교. **25개 결과 확보/분석 완료** |
 | **81-case 후속 결과: 아직 미등록** | **4변수 Full Factorial 81-case** (기존 SWB 입력 40+41로 분할) | 25-case Case 4에서 남은 **P462 부족·peak depth·deep-tail 불균형**을 검증할 예정. **결과 확보·분석 후에만 결과 CSV를 등록** |
 
@@ -48,9 +49,9 @@ Main/Trim/Deep Energy와 dose는 surrogate calibration 수준이며 actual found
 
 ## 데이터 해석 주의
 
-- **현재 이 폴더에 있는 25-case CSV만 실제 SProcess/SVisualPy 결과**다. 81-case는 설계한 DOE이며 실제 결과 CSV가 나오기 전까지 보관하지 않는다.
+- **현재 이 폴더의 45-case A/B 결과와 25-case 결과 CSV는 모두 실제 SProcess/SVisualPy 결과**다. 81-case는 설계한 DOE이며 실제 결과 CSV가 나오기 전까지 보관하지 않는다.
 - `TAIL14_R / TAIL16_R / TAIL18_R / TAIL_RMSE`의 비교 기준은 현재 SVisualPy v0.4의 **analytic Gaussian reference**이고, 전체 원본 SDE PLX를 직접 fitting한 결과는 아니다.
 - `P462_R`은 고정 깊이의 PActive ratio이며 SCR 자체는 아니다. profile screening으로 VBD/PEB/ATP/dark 개선을 주장하지 않는다.
-- 원래 45-case 결과 CSV(`1006A.csv`/`1006B.csv`) 및 25-case 실험 **입력 조건** CSV는 현재 이 data 폴더에 미등록이다. 2026-10-09 추가로 업로드된 `1008_(1).csv`는 보관 중인 25-case `1008_.csv`와 내용이 정확히 같아 중복 저장하지 않았다. 필요한 경우 원본 그대로 추가하고 이 README의 파일 표를 갱신한다.
+- **45-case 결과 원본**은 실제 첨부 파일명인 `1006_A.csv`/`1006_B.csv`로 등록했다. 기존 로그의 `1006A.csv`/`1006B.csv`는 같은 45-case의 옛 표기다. 25-case 실험 **입력 조건** CSV는 현재 이 data 폴더에 미등록이다. 2026-10-09 추가로 업로드된 `1008_(1).csv`는 보관 중인 25-case `1008_.csv`와 내용이 정확히 같아 중복 저장하지 않았다. 필요한 경우 원본 그대로 추가하고 이 README의 파일 표를 갱신한다.
 
 **데이터 보관 변경(2026-10-09):** 아직 결과가 나오지 않은 81-case SWB 입력 조건 CSV 2개(40/41)는 GitHub에서 삭제하였다. 분석이 끝난 실제 결과 CSV만 이 폴더에 올리는 원칙을 적용한다.
