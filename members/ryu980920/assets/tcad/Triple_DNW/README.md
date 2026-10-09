@@ -427,4 +427,62 @@ Triple_DNW/
 
 - **SProcess v0.3:** Stage 1 공통 STI restart부터 Main/Trim/Deep DNW implant, 공통 WELL RTA, final PLX 출력까지 수행하는 **재구성 Stage 2** command이다. 정확한 과거 실행 원본임을 확인한 파일은 아니다.
 - **SVisualPy v0.4:** 기존 Dual-DNW `SCORE` 계산 방식은 유지하고 deep-tail 진단 기능만 추가한 profile-screening script이다. 현재 파일 형식은 `.md`이며 실행 코드가 Markdown 코드 블록 안에 있다.
-- 공통 Stage 1은 `../Dual_DNW/`에 보관한다. 본 폴더에는 위 **두 파일과 README만** 관리한다.
+- 공통 Stage 1은 `../Dual_DNW/`에 보관한다. 2026-10-09부터 DOE 결과·입력 CSV도 같은 폴더에 날짜별 파일명으로 보관한다. 아래 12절 참고.
+
+---
+
+## 12. 2026-10-09: 25-case 결과 분석 및 후속 81-case DOE
+
+### 12.1 45→25에서 선택한 기준과 이유
+
+첫 45-case의 **Lowest-SCORE 1700 keV 후보**는 sigma 382.45 nm로 target(380.6 nm)에 근접했지만 `TAIL14_R=0.7082`, `TAIL18_R=1.3235`로 profile 형상이 균형적이지 않았다. 대신 **1500 keV / Deep dose 5.00e12 / Total dose 2.90e13 cm^-2의 Minimum-Tail-RMSE Balanced 후보**를 선택했다. 이 후보의 `TAIL14/16/18_R=0.8382/0.8970/0.8380` 및 `TAIL_RMSE=0.05857`로 tail이 상대적으로 균형적이었지만 `DNW_PK_R=1.1266`으로 main peak 농도 과다가 남았다.
+
+이에 25-case에서는 **Total DNW dose 2.90e13과 Trim absolute dose 6.00e12 cm^-2를 고정**한 채 Main dose를 Deep dose로 옮겼다. Deep Energy `1500/1525/1550/1575/1600 keV` × Deep Fraction `0.172413793/0.189655172/0.206896552/0.224137931/0.241379310`의 25조합이었다. 이는 첫 45-case의 Deep dose 추가/Total dose 증가 방식과 구별되는 redistribution 실험이다.
+
+### 12.2 25-case에서 확인된 대표 결과
+
+| 기준 | Deep E [keV] | Deep frac | PK Ratio | Sigma [nm] | TAIL14/16/18_R | TAIL_RMSE |
+|---|---:|---:|---:|---:|---|---:|
+| Lowest-SCORE, Case 15 | 1550 | 0.241379 | 1.0316 | 381.96 | 0.936 / 1.180 / 1.258 | 0.05753 |
+| **Minimum-Tail-RMSE, Case 4** | **1500** | **0.224138** | **1.0626** | **369.23** | **0.934 / 1.079 / 0.991** | **0.02815** |
+
+Case 4의 `P462_R=0.8193`, `DNW_RP=1031.292 nm`(target 1017.3 nm)이므로 junction-side PActive 부족과 main peak-depth 오차가 남는다. Deep Energy별 5개 fraction 그룹 평균에서는 1500 keV의 tail RMSE가 가장 낮았고, 1525 keV는 peak ratio, sigma 및 1.8 µm tail의 target 접근에 장점이 있었다. **다음 DOE의 재현 anchor는 Case 4(1500 keV)**로 유지하고 1525 keV는 탐색 중심 후보로 함께 평가하기로 했다.
+
+### 12.3 81-case DOE의 설계 근거와 Dose 계산
+
+25-case에서 높은 Deep Fraction은 main peak ratio와 sigma 정합에 유리했지만 1.6/1.8 µm overshoot가 심해질 수 있었다. 따라서 다음에는 Shallow Trim contribution과 Main Energy를 함께 조절하고, Deep Energy 및 Dose를 좁은 범위에서 비교하도록 **3×3×3×3=81-case Full Factorial**을 설계했다.
+
+| DOE 독립변수 | 3수준 | 목적 |
+|---|---|---|
+| Trim absolute dose | 6.00 / 6.25 / 6.50e12 cm^-2 | P462 부근 PActive 보강, Main contribution 조절 |
+| Main Energy | 965 / 970 / 975 keV | 깊은 main peak의 shallow 방향 미세 조절 |
+| Deep Energy | 1475 / 1500 / 1525 keV | T14/T16/T18의 depth-dependent balance 비교 |
+| Deep absolute dose | 6.50 / 6.75 / 7.00e12 cm^-2 | Energy 변경 시 tail dose 민감도 분석 |
+
+이전 25-case와 달리 **Trim 증가분은 Main dose에서 빼고, Deep 추가량만큼 Total DNW dose를 늘리는 정책**을 사용한다. Peak를 과도하게 줄이지 않고 deep tail을 보강할 수 있는지는 후속 결과로 검증할 가설이다.
+
+```text
+Main dose          = 2.25e13 - Trim absolute dose
+Total DNW dose     = 2.25e13 + Deep absolute dose
+DNW_TRIM_FRAC      = Trim absolute dose / Total DNW dose
+DNW_DEEP_FRAC      = Deep absolute dose / Total DNW dose
+DNW_MAIN_FRAC      = 1 - DNW_TRIM_FRAC - DNW_DEEP_FRAC
+
+Total DNW dose levels = 2.90 / 2.925 / 2.95e13 cm^-2
+```
+
+고정조건: `DNW_TRIM_E=550 keV`, `PW_TRIM_E=85 keV`, `PW_FIXED_E=36 keV`, `PW_TRIM_FRAC=0.525`, `PW_TOTAL_DOSE=2.06e13 cm^-2`, 공통 WELL RTA `1050 °C / 30 s`. 등록된 SWB Parameter는 고정값이어도 command에서 상수로 하드코딩하지 않고 `@PARAMETER@`로 참조한다.
+
+### 12.4 데이터 파일과 진행 상태
+
+| 파일 | 내용 | 상태 |
+|---|---|---|
+| [2026-10-09 25-case 원본 결과](2026-10-09-triple-dnw-main-to-deep-25cases-results-raw.csv) (업로드 원본 이름 `1008_.csv`) | 실제 SProcess/SVisualPy 25행 결과 | **분석 완료** |
+| [81-case Batch A 40행](2026-10-09-triple-dnw-81cases-batch-a-40.csv) | SWB용 입력 조건 | **설계/검증 완료, 시뮬레이션 결과 미확보** |
+| [81-case Batch B 41행](2026-10-09-triple-dnw-81cases-batch-b-41.csv) | SWB용 입력 조건 | **설계/검증 완료, 시뮬레이션 결과 미확보** |
+
+81개 조합의 중복/누락이 없음을 확인했고 Batch A 첫 번째 행에는 이전 Case 4를 재현하는 조건을 포함했다. SWB 화면에서 보이는 범위의 입력은 확인했지만 81개 전체의 **실제 실행 완료를 검증한 것은 아니다.**
+
+자세한 근거와 평균/후보별 수치·미완료 작업: [2026-10-09 활동 기록](../../../timeline/2026-10/2026-10-09.md).
+
+**근거 제약:** `TAIL14_R/TAIL16_R/TAIL18_R`, `TAIL_RMSE`의 기준은 현 SVisualPy v0.4의 analytic Gaussian reference이다. full SDE PLX 직접 target 및 SDevice electrical equivalence 검증 전에는 최종 baseline freeze를 주장하지 않는다.
