@@ -1,0 +1,1012 @@
+; VERSION v2.4 / GRADED LOCAL MESH / DUAL OUTPUT (T-2022.03)
+; Validated v2.3 geometry, contacts and frozen analytical doping are kept unchanged.
+; NEW: multi-region graded mesh, matching the user-approved 3D+XZ sketch.
+; NEW: after the electrical _msh.tdr succeeds, restore the 7-nm UpperSi
+; from inactive Oxide to real Silicon and run Sentaurus Mesh a SECOND time.
+;
+; EXPECTED OUTPUTS ON SUCCESS IN THE SAME SWB NODE FOLDER:
+;    n@node@_msh.tdr          electrical surrogate (UpperSi=Oxide, doped Bulk)
+;    n@node@_physical_msh.tdr physical stack (UpperSi=Silicon, doped Bulk)
+; Both include 3D tetra mesh/region/contact and frozen PW/DNW/NW/P+ fields
+; in Bulk. UpperSi itself remains undoped (no implant placement in that region).
+;
+; This script has NOT been run on the user's Sentaurus server. First run as
+; MeshStage=5 full proposal, or stage=2/3/4 for controlled mesh bring-up.
+; Region target sizes are trial mesh assumptions (not SDevice convergence evidence).
+; =============================================================================
+; CMP SPAD 3D Reference Candidate B - electrical SDE v2.2 PRE-BULK CONTACT IMPRINT + MSH OUTPUT
+; Sentaurus Structure Editor T-2022.03
+;
+; PURPOSE
+;   - Keep the audited Candidate-B physical geometry and frozen radial PW/DNW core.
+;   - Repair the confirmed ActiveSTI self-touch BREP defect without moving
+;     any STI boundary: retain 188 separate Oxide bodies instead of one union.
+;   - Avoid the optional final fix-imprint until its effect is isolated.
+;   - ACTUALLY INVOKE sde:build-mesh; on successful server execution it writes
+;     n@node@_msh.tdr (at M0 without doping; at M1+ with frozen doping).
+;     The mesh is NOT proven successful without a T-2022.03 runtime test.
+;   - Use SDE -> SDevice only for electrical analysis.
+;   - Rebuild the electrical mesh with native 3D Ref/Eval primitives and staged
+;     bring-up instead of literal 2D-polygon revolution / temporary mesh solids.
+;
+; MODEL IDENTITY
+;   Physical STI geometry : non-axisymmetric Cartesian staircase
+;   Electrical doping     : axisymmetric radial C(r,z), r=sqrt(x^2+y^2)
+;   Electrical mesh       : 2D baseline resolution hierarchy translated into
+;                           robust native 3D Cuboid/multi-Cuboid windows
+;
+; IMPORTANT
+;   - STI is NOT radialized.
+;   - PW/DNW values are NOT refit in this file.
+;   - Depletion/RedArea 3D windows are mesh-only conservative numerical envelopes.
+;   - No Delaunizer override is used during bring-up.
+;   - Start MeshStage=0 (BREP smoke test, no doping). After SUCCESS, set 1,
+;     then advance one stage only after each _msh.tdr is generated.
+;
+; All lengths are in um. Doping concentrations are in cm^-3.
+; =============================================================================
+
+(sde:clear)
+(sde:set-process-up-direction "+z")
+(sdegeo:set-default-boolean "ABA")
+
+; =============================================================================
+; 0. Frozen coordinates and electrical parameters
+; =============================================================================
+
+; Vertical stack. 3D z is the negative of the frozen 2D depth coordinate.
+(define t_uSi 0.007)
+(define t_BOX 0.025)
+(define t_STI 0.300)
+
+(define z_STI_bottom 0.000)
+(define z_surface    0.300)
+(define z_BOX_top    0.325)
+(define z_uSi_top    0.332)
+(define z_bottom   -10.000)
+
+; Frozen 2D radial domain -> 3D cylindrical electrical domain.
+(define R_domain 24.000)
+(define R_active 12.500)
+
+; Native active-zone STI / peripheral STI5 principal-cut coordinates.
+(define w_STI1       0.600)
+(define w_STI_active 0.300)
+(define w_STI5       0.600)
+; Frozen principal-cut STI5 = 12.20-12.80 um.  The principal-axis exposed-edge
+; strip therefore keeps the full 0.600-um extension.  Only the convex corner
+; fill is limited to the 0.300-um overlap half-width so that the staircase
+; corner does not intrude into the frozen NW annulus at r=14.20 um.
+(define ov_STI5      0.300)
+(define w_STI5_corner ov_STI5)
+
+(define x_STI1_start 0.700)
+(define x_STI1_end   1.300)
+(define x_STI2_start 2.975)
+(define x_STI2_end   3.275)
+(define x_STI3_start 6.100)
+(define x_STI3_end   6.400)
+(define x_STI4_start 9.225)
+(define x_STI4_end   9.525)
+(define x_STI5_start 12.200)
+(define x_STI5_end   12.800)
+
+; Frozen outer electrical topology from the 2D surrogate baseline.
+(define r_anode            0.550)
+(define r_NW_start        14.200)
+(define r_NW_end          15.400)
+(define r_DNW_edge        16.300)
+(define r_STI6_start      17.000)
+(define r_STI6_end        17.600)
+(define r_SubPW_start     17.600)
+(define r_SubPW_end       18.800)
+(define r_SubContact_start 17.800)
+(define r_SubContact_end   18.600)
+(define r_STI7_start      18.800)
+(define r_STI7_end        19.400)
+
+; Frozen analytic electrical core.
+(define PW_Rp     0.100)
+(define PW_dRp    0.200)
+(define PW_Npeak  5.95e17)
+
+(define DNW_Rp    1.000)
+(define DNW_dRp   0.380)
+(define DNW_Npeak 3.15e17)
+
+(define NW_Rp     0.300)
+(define NW_dRp    0.400)
+(define NW_Npeak  1.00e19)
+
+(define PP_Rp     0.020)
+(define PP_dRp    0.050)
+(define PP_Npeak  1.00e19)
+
+; Frozen lateral Gaussian factor from the 2D model.
+(define LatFactor 0.800)
+
+; Uniform mesh-length multiplier (Global + all Local refinement sizes).
+; Trial setting: 1.50; only UpperSi vertical max/min spacing is held fixed.
+(define MeshScale 1.50)
+(define (ms x) (* MeshScale x))
+
+; Mesh bring-up stage. Start at 0 and advance only after each stage produces
+; n@node@_msh.tdr successfully.
+;   0 = physical geometry + Global mesh only
+;   1 = + frozen radial doping (no adaptive doping refinement yet)
+;   2 = + mid-bulk / PW-DNW adaptive / SCR
+;   3 = + thin 7nm UpperSi + 25nm BOX / Anode
+;   4 = + Cartesian active-STI interface refinement
+;   5 = + STI5 / PEB / cathode / outer pickup
+(define MeshStage 5)
+(define (stage>= n) (>= MeshStage n))
+
+; Avoid literal #t/#f in the source while still passing true Boolean objects
+; to T-2022.03 APIs.
+(define TRUE  (= 1 1))
+(define FALSE (= 1 0))
+
+; IMPORTANT (v2.0.1):
+; Do NOT enable evaluate-log-file during procedure-definition bring-up.
+; In T-2022.03 this run stopped at the otherwise unchanged two-argument
+; procedure make-sti5-around-cell immediately after evaluated logging was
+; enabled.  The same procedure executed successfully in v1.5 without this
+; logging mode.  Keep normal SDE logging and the explicit diagnostics below.
+; (set! evaluate-log-file TRUE)
+
+; =============================================================================
+; 1. Geometry helpers
+; =============================================================================
+
+(define (make-box name material x0 y0 z0 x1 y1 z1)
+  (sdegeo:create-cuboid
+    (position x0 y0 z0)
+    (position x1 y1 z1)
+    material name))
+
+(define (seg-name s) (car s))
+(define (seg-lo s)   (cadr s))
+(define (seg-hi s)   (caddr s))
+(define (seg-type s) (cadddr s))
+(define (seg-center s) (* 0.5 (+ (seg-lo s) (seg-hi s))))
+
+; Candidate-B Cartesian sequence. 2D radial coordinates are NOT converted to
+; concentric active-STI rings. The same sequence is crossed in X and Y.
+(define ActiveSegments
+  (list
+    (list "SiM4"  -12.200 -9.525 "Si")
+    (list "STI4M"  -9.525 -9.225 "STI")
+    (list "SiM3"   -9.225 -6.400 "Si")
+    (list "STI3M"  -6.400 -6.100 "STI")
+    (list "SiM2"   -6.100 -3.275 "Si")
+    (list "STI2M"  -3.275 -2.975 "STI")
+    (list "SiM1"   -2.975 -1.300 "Si")
+    (list "STI1M"  -1.300 -0.700 "STI")
+    (list "SiC"    -0.700  0.700 "Si")
+    (list "STI1P"   0.700  1.300 "STI")
+    (list "SiP1"    1.300  2.975 "Si")
+    (list "STI2P"   2.975  3.275 "STI")
+    (list "SiP2"    3.275  6.100 "Si")
+    (list "STI3P"   6.100  6.400 "STI")
+    (list "SiP3"    6.400  9.225 "Si")
+    (list "STI4P"   9.225  9.525 "STI")
+    (list "SiP4"    9.525 12.200 "Si")))
+
+(define Nseg (length ActiveSegments))
+
+; Whole-block Candidate-B retention rule: keep a full Cartesian block only
+; when its center lies inside the nominal 12.5-um active radius.
+(define (kept-cell? i j)
+  (and (>= i 0)
+       (< i Nseg)
+       (>= j 0)
+       (< j Nseg)
+       (let* ((sx (list-ref ActiveSegments i))
+              (sy (list-ref ActiveSegments j))
+              (cx (seg-center sx))
+              (cy (seg-center sy)))
+         (<= (sqrt (+ (* cx cx) (* cy cy))) R_active))))
+
+(define ActiveSTIBodies (list))
+(define UpperSiBodies   (list))
+
+(define (make-active-cell i j)
+  (let* ((sx (list-ref ActiveSegments i))
+         (sy (list-ref ActiveSegments j))
+         (x0 (seg-lo sx))
+         (x1 (seg-hi sx))
+         (y0 (seg-lo sy))
+         (y1 (seg-hi sy))
+         (base-name (string-append (seg-name sx) "." (seg-name sy))))
+    (if (or (string=? (seg-type sx) "STI")
+            (string=? (seg-type sy) "STI"))
+        (let ((b
+                (make-box
+                  (string-append "R.ActiveSTI." base-name)
+                  "Oxide"
+                  x0 y0 z_STI_bottom x1 y1 z_uSi_top)))
+          (set! ActiveSTIBodies
+                (append ActiveSTIBodies (list b))))
+        (begin
+          (make-box
+            (string-append "R.BOX." base-name)
+            "Oxide"
+            x0 y0 z_surface x1 y1 z_BOX_top)
+          ; Electrical model follows the frozen 2D baseline: UpperSi is
+          ; intentionally inactive Oxide for SDevice, not physical Silicon.
+          (let ((u
+                  (make-box
+                    (string-append "R.UpperSi." base-name)
+                    "Oxide"
+                    x0 y0 z_BOX_top x1 y1 z_uSi_top)))
+            (set! UpperSiBodies
+                  (append UpperSiBodies (list u))))))))
+
+; STI5 follows the retained Candidate-B staircase perimeter.
+; - exposed side strips use the full 0.600-um principal-cut width so x=0/y=0
+;   retains the frozen 12.20-12.80 um interval;
+; - convex-corner fill uses only 0.300 um (= ov_STI5), preventing the diagonal
+;   corner fill from entering the frozen cathode NW annulus (r>=14.20 um).
+; This is a geometry-consistency realization of the surrogate STI5 topology;
+; it is NOT claimed as an exact foundry mask.
+(define STI5Bodies (list))
+
+(define (make-sti5-box name x0 y0 x1 y1)
+  (let ((body
+          (make-box name "Oxide"
+            x0 y0 z_STI_bottom x1 y1 z_uSi_top)))
+    (set! STI5Bodies (append STI5Bodies (list body)))
+    body))
+
+(define (make-sti5-around-cell i j)
+  (let* ((sx (list-ref ActiveSegments i))
+         (sy (list-ref ActiveSegments j))
+         (x0 (seg-lo sx))
+         (x1 (seg-hi sx))
+         (y0 (seg-lo sy))
+         (y1 (seg-hi sy))
+         (base-name (string-append (seg-name sx) "." (seg-name sy)))
+         (L (not (kept-cell? (- i 1) j)))
+         (R (not (kept-cell? (+ i 1) j)))
+         (B (not (kept-cell? i (- j 1))))
+         (T (not (kept-cell? i (+ j 1)))))
+    (if L
+        (make-sti5-box
+          (string-append "R.STI5." base-name ".L")
+          (- x0 w_STI5) y0 x0 y1))
+    (if R
+        (make-sti5-box
+          (string-append "R.STI5." base-name ".R")
+          x1 y0 (+ x1 w_STI5) y1))
+    (if B
+        (make-sti5-box
+          (string-append "R.STI5." base-name ".B")
+          x0 (- y0 w_STI5) x1 y0))
+    (if T
+        (make-sti5-box
+          (string-append "R.STI5." base-name ".T")
+          x0 y1 x1 (+ y1 w_STI5)))
+    (if (and L B)
+        (make-sti5-box
+          (string-append "R.STI5." base-name ".LB")
+          (- x0 w_STI5_corner) (- y0 w_STI5_corner) x0 y0))
+    (if (and L T)
+        (make-sti5-box
+          (string-append "R.STI5." base-name ".LT")
+          (- x0 w_STI5_corner) y1 x0 (+ y1 w_STI5_corner)))
+    (if (and R B)
+        (make-sti5-box
+          (string-append "R.STI5." base-name ".RB")
+          x1 (- y0 w_STI5_corner) (+ x1 w_STI5_corner) y0))
+    (if (and R T)
+        (make-sti5-box
+          (string-append "R.STI5." base-name ".RT")
+          x1 y1 (+ x1 w_STI5_corner) (+ y1 w_STI5_corner)))))
+
+; Explicit annulus helper used only for the outer electrical pickup topology.
+; STI6/STI7 exact 3D masks are unpublished; the annular realization is a
+; surrogate chosen to preserve the frozen 2D cylindrical principal cut.
+(define (make-annulus name material rin rout z0 z1)
+  (sdegeo:set-default-boolean "XX")
+  (let* ((outer
+           (sdegeo:create-cylinder
+             (position 0.0 0.0 z0)
+             (position 0.0 0.0 z1)
+             rout material name))
+         (inner
+           (sdegeo:create-cylinder
+             (position 0.0 0.0 z0)
+             (position 0.0 0.0 z1)
+             rin material (string-append name ".CUT")))
+         (ring (sdegeo:bool-subtract (list outer inner))))
+    ; Explicit cleanup is harmless if bool-subtract already consumed the cutter.
+    (let ((leftover (find-region-id (string-append name ".CUT"))))
+      (if (not (null? leftover))
+          (sdegeo:delete-region leftover)))
+    (sde:add-material ring material name)
+    (sdegeo:set-default-boolean "ABA")
+    (remove-body-ABA ring)
+    ring))
+
+
+; =============================================================================
+; 1A. Native 3D Ref/Eval helpers for robust electrical meshing
+; =============================================================================
+; Mesh-only windows must not modify physical geometry.  v2.0.1 therefore uses
+; only documented Ref/Eval Cuboid / multi-Cuboid objects.  No sweep, cone,
+; temporary physical body, Boolean mesh-solid, or extract-refpolyhedron is used.
+
+(define (cuboid-shape x0 y0 z0 x1 y1 z1)
+  (list "Cuboid"
+    (position x0 y0 z0)
+    (position x1 y1 z1)))
+
+(define (define-cuboid-window name x0 y0 z0 x1 y1 z1)
+  (sdedr:define-refeval-window name "Cuboid"
+    (position x0 y0 z0)
+    (position x1 y1 z1)))
+
+; Conservative square-ring mesh envelope made from four native cuboids.
+; This is numerical only and does not redefine the radial electrical core.
+(define (square-ring-shapes rin rout z0 z1)
+  (list
+    (cuboid-shape   rin (- rout) z0   rout   rout z1)
+    (cuboid-shape (- rout) (- rout) z0 (- rin) rout z1)
+    (cuboid-shape (- rin)   rin z0    rin   rout z1)
+    (cuboid-shape (- rin) (- rout) z0 rin (- rin) z1)))
+
+; Active STI1-4 are Cartesian, not annular.  Build a compact multi-Cuboid
+; refinement window from the actual STI x/y strip coordinates in ActiveSegments.
+; There are 8 STI segments in X and the same 8 in Y -> 16 strip windows.
+(define (build-active-sti-mesh-shapes)
+  (let ((shapes (list)))
+    (do ((i 0 (+ i 1)))
+        ((>= i Nseg) shapes)
+      (let ((s (list-ref ActiveSegments i)))
+        (if (string=? (seg-type s) "STI")
+            (begin
+              ; vertical strip following the physical Cartesian STI network
+              (set! shapes
+                (append shapes
+                  (list
+                    (cuboid-shape
+                      (- (seg-lo s) 0.10) (- R_active) -0.18
+                      (+ (seg-hi s) 0.10)    R_active (+ z_uSi_top 0.020)))))
+              ; horizontal strip following the physical Cartesian STI network
+              (set! shapes
+                (append shapes
+                  (list
+                    (cuboid-shape
+                      (- R_active) (- (seg-lo s) 0.10) -0.18
+                         R_active  (+ (seg-hi s) 0.10) (+ z_uSi_top 0.020)))))))))))
+
+; =============================================================================
+; 2. Physical 3D Candidate-B electrical geometry
+; =============================================================================
+
+; Cylindrical 24-um electrical domain is the exact 3D rotational extension of
+; the frozen 2D cylindrical radial domain.
+(define BulkBody
+  (sdegeo:create-cylinder
+    (position 0.0 0.0 z_bottom)
+    (position 0.0 0.0 z_surface)
+    R_domain "Silicon" "Bulk"))
+
+; ============================================================================
+; v2.2 CONTACT TOPOLOGY REPAIR TEST
+; ============================================================================
+; v2.1 precontact BND had no individual-region nonmanifold edges, whereas the
+; post-contact boundary had 944 nonmanifold edges (verified on uploaded TDR).
+; Previous script ran these five global circular imprints AFTER introducing
+; 329 oxide regions, cutting across many oxide region faces at z=0.300.
+;
+; Here the five circular wires are imprinted ONLY on the bare Bulk Silicon
+; cylinder, BEFORE any Oxide geometry exists. The following geometry operations
+; preserve the physical STI positions and original contact radii; after the
+; structure is built we only assign names to existing Si faces.
+; This is a hypothesis to test on the Sentaurus server, not a proven fix.
+(sdegeo:imprint-circular-wire (position 0.0 0.0 z_surface) r_anode)
+(sdegeo:imprint-circular-wire (position 0.0 0.0 z_surface) r_NW_start)
+(sdegeo:imprint-circular-wire (position 0.0 0.0 z_surface) r_NW_end)
+(sdegeo:imprint-circular-wire (position 0.0 0.0 z_surface) r_SubContact_start)
+(sdegeo:imprint-circular-wire (position 0.0 0.0 z_surface) r_SubContact_end)
+
+; If meshing still fails, compare the boundary saved now with post-STI and
+; post-contact boundaries to isolate whether an imprint is being propagated.
+(sdeio:save-tdr-bnd (get-body-list)
+  "n@node@_v2p2_00_bulk_after_preimprint_bnd.tdr")
+
+
+; Candidate-B active Cartesian staircase.
+(do ((i 0 (+ i 1)))
+    ((>= i Nseg))
+  (do ((j 0 (+ j 1)))
+      ((>= j Nseg))
+    (if (kept-cell? i j)
+        (make-active-cell i j))))
+
+; IMPORTANT v2.2 BREP REPAIR (geometry-preserving partition):
+; Do NOT unite all 188 active-STI Oxide cells into one region.
+; Trace 01/02 demonstrates that the united R.ActiveSTI has a non-manifold
+; vertical edge at four symmetric (+/-9.225,+/-9.225) um locations, where
+; two STI pieces meet only along a line.  Each individual original STI cell
+; was a closed manifold in trace 00; STI5 ABA subsequently repaired the
+; pre-STI5 Bulk junction in trace 02.  Leave the Oxide cells as separate
+; named regions, with exactly the same physical x/y/z material occupancy.
+; This does NOT remove STI2/3/4 or change the 2D baseline dimensions.
+; No sdegeo:bool-unite ActiveSTIBodies is performed here.
+; AxisAligned skipSameMaterialInterfaces is enabled for the resulting
+; Oxide/Oxide interfaces. Mesh node cost may rise; prioritize conformality.
+
+; Peripheral STI5 staircase: create all exposed-edge blocks without automatic
+; overlap removal, unite them, then imprint the resulting single band into the
+; physical model using the documented ABA-equivalent operation.
+(sdegeo:set-default-boolean "XX")
+(do ((i 0 (+ i 1)))
+    ((>= i Nseg))
+  (do ((j 0 (+ j 1)))
+      ((>= j Nseg))
+    (if (kept-cell? i j)
+        (make-sti5-around-cell i j))))
+
+(define STI5Body (sdegeo:bool-unite STI5Bodies))
+(sde:add-material STI5Body "Oxide" "R.STI5")
+(sdegeo:set-default-boolean "ABA")
+(remove-body-ABA STI5Body)
+
+; Outer electrical pickup STI6/STI7, preserving the frozen 2D radial topology.
+(define STI6Body
+  (make-annulus "R.STI6" "Oxide"
+    r_STI6_start r_STI6_end z_STI_bottom z_uSi_top))
+(define STI7Body
+  (make-annulus "R.STI7" "Oxide"
+    r_STI7_start r_STI7_end z_STI_bottom z_uSi_top))
+
+; Central circular opening exposes the bulk-Si anode surface through the
+; inactive BOX/UpperSi stack.
+(sdegeo:set-default-boolean "ABA")
+(define AnodeCutter
+  (sdegeo:create-cylinder
+    (position 0.0 0.0 z_surface)
+    (position 0.0 0.0 z_uSi_top)
+    r_anode "Aluminum" "TMP.AnodeCutter"))
+(sdegeo:delete-region AnodeCutter)
+
+; Restore neighboring faces BEFORE defining contacts (trace 05 timing).
+(sde:fix-imprint)
+; Pre-contact boundary snapshot, to isolate later contact imprint issues.
+(sdeio:save-tdr-bnd
+  (get-body-list)
+  "n@node@_candidateB_v2p4_precontact_bnd.tdr")
+; The above file is the post-STI, post-fix-imprint boundary used as comparison
+; against the post-contact stage; it SHOULD be conformal if v2.1 is representative.
+
+
+; =============================================================================
+; 3. Electrical contacts
+; =============================================================================
+
+(sdegeo:define-contact-set "anode"     4 (color:rgb 1 0 0) "##")
+(sdegeo:define-contact-set "cathode"   4 (color:rgb 0 0 1) "##")
+(sdegeo:define-contact-set "substrate" 4 (color:rgb 0 1 0) "##")
+
+; v2.2: DO NOT re-imprint circular wires here!  The boundaries were already
+; cut into the bare Bulk in Section 2 before placing STI/BOX/UpperSi.
+; Select existing Silicon top faces only.
+(sdegeo:set-contact
+  (find-face-id (position 0.0 0.0 z_surface)) "anode")
+(sdegeo:set-contact
+  (find-face-id
+    (position (* 0.5 (+ r_NW_start r_NW_end)) 0.0 z_surface))
+  "cathode")
+(sdegeo:set-contact
+  (find-face-id
+    (position (* 0.5 (+ r_SubContact_start r_SubContact_end))
+              0.0 z_surface))
+  "substrate")
+
+(protect-all-contacts)
+
+; v2.2 boundary snapshot after ONLY contact-set assignments (no further wires).
+(sdeio:save-tdr-bnd (get-body-list)
+  "n@node@_v2p2_02_after_contact_assignment_bnd.tdr")
+
+; =============================================================================
+; 4. Frozen electrical doping -- enabled from MeshStage >= 1
+; =============================================================================
+
+(define (define-frozen-doping)
+  (sdedr:define-constant-profile
+    "Dop.Substrate" "BoronActiveConcentration" 1e15)
+  (sdedr:define-constant-profile-region
+    "Place.Substrate" "Dop.Substrate" "Bulk")
+
+  ; General() evaluates global device coordinates x,y,z directly in Sentaurus Mesh.
+  ; The dummy top-plane Ref/Eval element is required by the SDE placement API but
+  ; is ignored by General(). EvaluateWindow=Bulk keeps all dopants out of Oxide.
+  (sdegeo:define-work-plane "wp_top"
+    (position 0.0 0.0 z_surface)
+    (position 1.0 0.0 z_surface)
+    (position 0.0 1.0 z_surface))
+  (sdegeo:set-active-work-plane "wp_top")
+  (sdedr:define-refeval-window "BL.General" "Rectangle"
+    (position -1.0 -1.0 0.0)
+    (position  1.0  1.0 0.0))
+  (sdegeo:set-active-work-plane "base")
+
+  ; Central P-well.
+  ; 2D primary sigma = 0.200; lateral sigma = 0.8*0.200 = 0.160.
+  (sdedr:define-analytical-profile
+    "Imp.PW.Center" "BoronActiveConcentration"
+    "pw_dummy=0"
+    "5.95e17*exp(-0.5*((0.300-z-0.100)/0.200)*((0.300-z-0.100)/0.200))*exp(-0.5*((0.5*(abs(hypot(x,y)-12.500)+(hypot(x,y)-12.500))/0.160)*(0.5*(abs(hypot(x,y)-12.500)+(hypot(x,y)-12.500))/0.160)))"
+    0.0 "General")
+  (sdedr:define-analytical-profile-placement
+    "Place.PW.Center" "Imp.PW.Center" "BL.General"
+    "Both" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+  ; Modified deep N-well.
+  ; 2D primary sigma = 0.380; lateral sigma = 0.8*0.380 = 0.304.
+  (sdedr:define-analytical-profile
+    "Imp.DNW" "PhosphorusActiveConcentration"
+    "dnw_dummy=0"
+    "3.15e17*exp(-0.5*((0.300-z-1.000)/0.380)*((0.300-z-1.000)/0.380))*exp(-0.5*((0.5*(abs(hypot(x,y)-16.300)+(hypot(x,y)-16.300))/0.304)*(0.5*(abs(hypot(x,y)-16.300)+(hypot(x,y)-16.300))/0.304)))"
+    0.0 "General")
+  (sdedr:define-analytical-profile-placement
+    "Place.DNW" "Imp.DNW" "BL.General"
+    "Both" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+  ; Cathode N-well annulus 14.20-15.40 um.
+  ; Radial distance to interval [a,b] = max(a-r,0)+max(r-b,0), written with abs().
+  (sdedr:define-analytical-profile
+    "Imp.NW" "PhosphorusActiveConcentration"
+    "nw_dummy=0"
+    "1.00e19*exp(-0.5*((0.300-z-0.300)/0.400)*((0.300-z-0.300)/0.400))*exp(-0.5*(((0.5*(abs(14.200-hypot(x,y))+(14.200-hypot(x,y)))+0.5*(abs(hypot(x,y)-15.400)+(hypot(x,y)-15.400)))/0.320)*((0.5*(abs(14.200-hypot(x,y))+(14.200-hypot(x,y)))+0.5*(abs(hypot(x,y)-15.400)+(hypot(x,y)-15.400)))/0.320)))"
+    0.0 "General")
+  (sdedr:define-analytical-profile-placement
+    "Place.NW" "Imp.NW" "BL.General"
+    "Both" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+  ; Central P+ anode disk r<=0.55 um.
+  (sdedr:define-analytical-profile
+    "Imp.PP.Anode" "BoronActiveConcentration"
+    "ppa_dummy=0"
+    "1.00e19*exp(-0.5*((0.300-z-0.020)/0.050)*((0.300-z-0.020)/0.050))*exp(-0.5*((0.5*(abs(hypot(x,y)-0.550)+(hypot(x,y)-0.550))/0.040)*(0.5*(abs(hypot(x,y)-0.550)+(hypot(x,y)-0.550))/0.040)))"
+    0.0 "General")
+  (sdedr:define-analytical-profile-placement
+    "Place.PP.Anode" "Imp.PP.Anode" "BL.General"
+    "Both" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+  ; Outer P-well pickup annulus 17.60-18.80 um.
+  (sdedr:define-analytical-profile
+    "Imp.PW.Sub" "BoronActiveConcentration"
+    "pws_dummy=0"
+    "5.95e17*exp(-0.5*((0.300-z-0.100)/0.200)*((0.300-z-0.100)/0.200))*exp(-0.5*(((0.5*(abs(17.600-hypot(x,y))+(17.600-hypot(x,y)))+0.5*(abs(hypot(x,y)-18.800)+(hypot(x,y)-18.800)))/0.160)*((0.5*(abs(17.600-hypot(x,y))+(17.600-hypot(x,y)))+0.5*(abs(hypot(x,y)-18.800)+(hypot(x,y)-18.800)))/0.160)))"
+    0.0 "General")
+  (sdedr:define-analytical-profile-placement
+    "Place.PW.Sub" "Imp.PW.Sub" "BL.General"
+    "Both" "NoReplace" "Eval" "Bulk" 0.0 "region")
+
+  ; Outer substrate P+ contact annulus 17.80-18.60 um.
+  (sdedr:define-analytical-profile
+    "Imp.PP.Sub" "BoronActiveConcentration"
+    "pps_dummy=0"
+    "1.00e19*exp(-0.5*((0.300-z-0.020)/0.050)*((0.300-z-0.020)/0.050))*exp(-0.5*(((0.5*(abs(17.800-hypot(x,y))+(17.800-hypot(x,y)))+0.5*(abs(hypot(x,y)-18.600)+(hypot(x,y)-18.600)))/0.040)*((0.5*(abs(17.800-hypot(x,y))+(17.800-hypot(x,y)))+0.5*(abs(hypot(x,y)-18.600)+(hypot(x,y)-18.600)))/0.040)))"
+    0.0 "General")
+  (sdedr:define-analytical-profile-placement
+    "Place.PP.Sub" "Imp.PP.Sub" "BL.General"
+    "Both" "NoReplace" "Eval" "Bulk" 0.0 "region")
+)
+
+
+; =============================================================================
+; 5. v2.6 AGGRESSIVE COARSE-BULK / RADIAL REFINEMENT MESH ONLY
+; =============================================================================
+; THIS ENTIRE SECTION REPLACES ONLY SECTION 5 OF THE VERIFIED v2.5 SOURCE.
+; Geometry, STI, contacts, Gaussian doping, runtime audit, restoration, and
+; both sde:build-mesh calls above/below are unchanged byte-for-byte.
+;
+; User-approved physical targeting:
+;   Deep bulk / outer sidewall       : VERY COARSE, no full-depth micro-mesh
+;   Bulk-to-junction transition      : MEDIUM graded cylindrical volume
+;   PW/DNW high-gradient region      : medium/fine near shallow cylinder ONLY
+;   SCR neighborhood                : local radial disk, z-focused
+;   Native STI1/2/3/4              : Cartesian Si/Oxide interfaces only
+;   STI5/PEB, NW, outer pickups     : annular, z-limited windows
+;   UpperSi 7 nm                    : 3.5 nm Zmax / 2.5 nm Zmin EXACTLY
+;
+; Baseline frozen 2D VBD/SCR validation has NOT been repeated for this mesh.
+; All refinement coordinates/sizes are *numerical mesh assumptions*.
+; All lengths are um. Existing MeshScale=1.50 applies to all sizes below
+; EXCEPT the two explicitly unscaled UpperSi Z sizes.
+;
+; IMPORTANT: curved *refinement windows* do NOT force curved tetra edges.
+; 3D tetrahedral elements are straight-edged. Cylindrical/annular windows
+; help limit WHERE fine elements are requested; the native physical BREP
+; retains its original curved/corner boundaries independently.
+;
+; Radial window generation: T-2022.03 SDE User Guide, Chapter 7,
+; "Extracting Ref/Eval Window From 3D Solid Body", extract-refpolyhedron.
+; Mesh-only TEMP cylinders are created with Boolean mode "XX" and removed
+; IMMEDIATELY after extraction. The final physical model is unchanged.
+;
+; ===========================================================================
+; 5.0 Mesher controls
+; ===========================================================================
+(sdesnmesh:iocontrols "verbosity" 3)
+(sdesnmesh:axisaligned
+  "fitInterfaces" FALSE
+  "skipSameMaterialInterfaces" TRUE
+  "smoothing" TRUE
+  "maxNeighborRatio" 5)
+; IMPORTANT: no forced global zCuts or auto-generated XY fitInterfaces cuts.
+; These can propagate top-STI segment lines deep into the bulk. The physical
+; interfaces remain in the BREP; local refinement windows govern their size.
+; Preserve AxisAligned + Delaunay mesher; no independent algorithm swap.
+; maxNeighborRatio 5 permits faster growth away from fine boundaries.
+;
+; ===========================================================================
+; 5.1 Coarse GLOBAL substrate: no blanket fine z/xy grid
+; ===========================================================================
+(define-cuboid-window "RW.Global"
+  (- R_domain) (- R_domain) z_bottom
+     R_domain     R_domain  z_uSi_top)
+(sdedr:define-refinement-size "RD.Global"
+  (ms 7.00) (ms 7.00) (ms 3.40)
+  (ms 2.10) (ms 2.10) (ms 0.90))
+(sdedr:define-refinement-placement "PL.Global" "RD.Global" "RW.Global")
+
+(if (stage>= 1) (define-frozen-doping))
+
+; ===========================================================================
+; 5.2 Mesh-only 3D CYLINDER / ANNULUS Ref/Eval helper functions
+; ===========================================================================
+; Snapshot the physical body count. No temporary body is allowed to remain.
+(define V26_MeshBodyCountBefore (length (get-body-list)))
+
+(define (v26-cylinder-refwin rwname tmpname radius z0 z1)
+  (sdegeo:set-default-boolean "XX")
+  (let ((tmp (sdegeo:create-cylinder
+               (position 0.0 0.0 z0) (position 0.0 0.0 z1)
+               radius "Silicon" tmpname)))
+    (extract-refpolyhedron tmp rwname)
+    (sdegeo:delete-region tmp))
+  (sdegeo:set-default-boolean "ABA"))
+
+(define (v26-annulus-refwin rwname tmpbase rin rout z0 z1)
+  (sdegeo:set-default-boolean "XX")
+  (let* ((outer (sdegeo:create-cylinder
+                  (position 0.0 0.0 z0) (position 0.0 0.0 z1)
+                  rout "Silicon" (string-append tmpbase ".OUT")))
+         (inner (sdegeo:create-cylinder
+                  (position 0.0 0.0 z0) (position 0.0 0.0 z1)
+                  rin "Silicon" (string-append tmpbase ".IN")))
+         (ring (sdegeo:bool-subtract (list outer inner))))
+    (extract-refpolyhedron ring rwname)
+    (sdegeo:delete-region ring)
+    ; Boolean subtraction normally consumes the cutter. Clean up only if not.
+    (let ((residual-in (find-region-id (string-append tmpbase ".IN")))
+          (residual-out (find-region-id (string-append tmpbase ".OUT"))))
+      (if (not (null? residual-in)) (sdegeo:delete-region residual-in))
+      (if (not (null? residual-out)) (sdegeo:delete-region residual-out))))
+  (sdegeo:set-default-boolean "ABA"))
+
+; Ensure temporary mesh window construction did not change final device.
+(define (v26-audit-mesh-only)
+  (if (not (= (length (get-body-list)) V26_MeshBodyCountBefore))
+      (sde:error "v2.6 mesh-only extraction left a physical body behind")))
+
+; ===========================================================================
+; 5.3 M2: coarse-to-medium BULK, constrained radial doping and SCR
+; ===========================================================================
+(define (define-stage2-mesh)
+  ; Deepest substrate (-10..-3um) remains under RD.Global ONLY.
+  ; Radial transition r<=19.5um; no full-width XY cuboid through the bulk.
+  (v26-cylinder-refwin "RW.BulkTransition" "TMP.V26.BulkTransition"
+    19.5 -3.10 -1.20)
+  (sdedr:define-refinement-size "RD.BulkTransition"
+    (ms 4.50) (ms 4.50) (ms 1.50)
+    (ms 1.10) (ms 1.10) (ms 0.35))
+  (sdedr:define-refinement-placement
+    "PL.BulkTransition" "RD.BulkTransition" "RW.BulkTransition")
+
+  ; PW/DNW core: restrict vertical grading to shallow cylinder.
+  (v26-cylinder-refwin "RW.DNWTransition" "TMP.V26.DNWTransition"
+    17.3 -1.70 -0.10)
+  (sdedr:define-refinement-size "RD.DNWTransition"
+    (ms 2.10) (ms 2.10) (ms 0.58)
+    (ms 0.48) (ms 0.48) (ms 0.13))
+  (sdedr:define-refinement-placement
+    "PL.DNWTransition" "RD.DNWTransition" "RW.DNWTransition")
+
+  ; Moderate gradient sampling INSIDE shallow r<=19.5um ONLY.
+  ; v2.5 blanket MaxInterval adaptive refinements are deliberately omitted:
+  ; they multiplied vertices over nearly the entire near-surface substrate.
+  (v26-cylinder-refwin "RW.DopingGradient" "TMP.V26.DopingGrad"
+    19.5 -1.60 z_surface)
+  (sdedr:define-refinement-size "RD.DopingGradient"
+    (ms 1.90) (ms 1.90) (ms 0.42)
+    (ms 0.36) (ms 0.36) (ms 0.075))
+  (sdedr:define-refinement-function
+    "RD.DopingGradient" "DopingConcentration" "MaxTransDiff" 2.4)
+  (sdedr:define-refinement-placement
+    "PL.DopingGradient" "RD.DopingGradient" "RW.DopingGradient")
+
+  ; PRELIMINARY SCR envelope near z=-0.05..+0.29um; depth limits do NOT
+  ; assert a solved 3D depletion boundary. Spatially localized r<=12.5um.
+  (v26-cylinder-refwin "RW.SCR.Active" "TMP.V26.SCR"
+    12.5 -0.13 z_surface)
+  (sdedr:define-refinement-size "RD.SCR.Active"
+    (ms 1.15) (ms 1.15) (ms 0.11)
+    (ms 0.27) (ms 0.27) (ms 0.028))
+  (sdedr:define-refinement-placement
+    "PL.SCR.Active" "RD.SCR.Active" "RW.SCR.Active")
+  (v26-audit-mesh-only)
+)
+(if (stage>= 2) (define-stage2-mesh))
+
+; ===========================================================================
+; 5.4 M3: UpperSi vertical resolution FROZEN; BOX, lateral and anode coarser
+; ===========================================================================
+(define (define-stage3-mesh)
+  ; 25nm BOX: Zmax=21nm/Zmin=9nm (coarser than v2.5 15nm/6nm).
+  ; The upper Si/BOX material boundaries are still represented by the BREP.
+  (define-cuboid-window "RW.BOX.Thin"
+    -12.9 -12.9 0.299 12.9 12.9 0.325)
+  (sdedr:define-refinement-size "RD.BOX.Thin"
+    (ms 1.35) (ms 1.35) (ms 0.014)
+    (ms 0.34) (ms 0.34) (ms 0.006))
+  (sdedr:define-refinement-placement
+    "PL.BOX.Thin" "RD.BOX.Thin" "RW.BOX.Thin")
+
+  ; EXACT UpperSi vertical exception, identical to v2.5 (in um):
+  ; MaxElementSizeZ=0.0035, MinElementSizeZ=0.0025.
+  ; UpperSi lateral element lengths are relaxed AGGRESSIVELY.
+  (define-cuboid-window "RW.UpperSi.Thin"
+    -12.9 -12.9 0.325 12.9 12.9 0.332)
+  (sdedr:define-refinement-size "RD.UpperSi.Thin"
+    (ms 1.25) (ms 1.25) 0.0035
+    (ms 0.35) (ms 0.35) 0.0025)
+  (sdedr:define-refinement-placement
+    "PL.UpperSi.Thin" "RD.UpperSi.Thin" "RW.UpperSi.Thin")
+
+  ; Local central contact only. No extra radial mesh beyond r=0.9um.
+  (define-cuboid-window "RW.Anode.Local"
+    -0.90 -0.90 -0.15 0.90 0.90 0.300)
+  (sdedr:define-refinement-size "RD.Anode.Local"
+    (ms 0.34) (ms 0.34) (ms 0.12)
+    (ms 0.072) (ms 0.072) (ms 0.033))
+  (sdedr:define-refinement-function
+    "RD.Anode.Local" "DopingConcentration" "MaxTransDiff" 2.0)
+  (sdedr:define-refinement-placement
+    "PL.Anode.Local" "RD.Anode.Local" "RW.Anode.Local")
+  (v26-audit-mesh-only)
+)
+(if (stage>= 3) (define-stage3-mesh))
+
+; ===========================================================================
+; 5.5 M4: ACTUAL Cartesian STI1..4, NOT annular physical STI
+; ===========================================================================
+(define (define-stage4-mesh)
+  ; Narrow STI-aware mesh-only strips: same frozen segment coordinates,
+  ; not the much deeper v2.5 strips to z=-0.18 and z=0.352.
+  ; No new physical geometry is generated by these shapes.
+  (let ((shapes (list)))
+    (do ((i 0 (+ i 1))) ((>= i Nseg))
+      (let ((seg (list-ref ActiveSegments i)))
+        (if (string=? (seg-type seg) "STI")
+            (begin
+              (set! shapes
+                (cons (cuboid-shape
+                        (- (seg-lo seg) 0.08) (- R_active) -0.085
+                        (+ (seg-hi seg) 0.08) R_active z_uSi_top)
+                      shapes))
+              (set! shapes
+                (cons (cuboid-shape
+                        (- R_active) (- (seg-lo seg) 0.08) -0.085
+                        R_active (+ (seg-hi seg) 0.08) z_uSi_top)
+                      shapes))))))
+    (sdedr:define-refeval-window "RW.ActiveSTI.Interfaces" shapes))
+  (sdedr:define-refinement-size "RD.ActiveSTI.Interfaces"
+    (ms 0.95) (ms 0.95) (ms 0.18)
+    (ms 0.18) (ms 0.18) (ms 0.040))
+  (sdedr:define-refinement-function
+    "RD.ActiveSTI.Interfaces" "MaxLenInt"
+    "Silicon" "Oxide" (ms 0.055) 1.8)
+  (sdedr:define-refinement-placement
+    "PL.ActiveSTI.Interfaces" "RD.ActiveSTI.Interfaces"
+    "RW.ActiveSTI.Interfaces")
+  (v26-audit-mesh-only)
+)
+(if (stage>= 4) (define-stage4-mesh))
+
+; ===========================================================================
+; 5.6 M5: TRUE radial annulus windows, no tiled square-ring over-coverage
+; ===========================================================================
+(define (define-stage5-mesh)
+  ; Peripheral STI5 staircase remains unchanged. The refinement RING is
+  ; an ELECTRICAL radial envelope only, not a claim STI5 is circular.
+  (v26-annulus-refwin "RW.STI5.PEB" "TMP.V26.STI5"
+    11.9 15.8 -0.30 0.332)
+  (sdedr:define-refinement-size "RD.STI5.PEB"
+    (ms 0.93) (ms 0.93) (ms 0.18)
+    (ms 0.18) (ms 0.18) (ms 0.040))
+  (sdedr:define-refinement-function
+    "RD.STI5.PEB" "MaxLenInt"
+    "Silicon" "Oxide" (ms 0.060) 1.9)
+  (sdedr:define-refinement-function
+    "RD.STI5.PEB" "DopingConcentration" "MaxTransDiff" 2.3)
+  (sdedr:define-refinement-placement
+    "PL.STI5.PEB" "RD.STI5.PEB" "RW.STI5.PEB")
+
+  ; Cathode N-well: radial, near the surface only.
+  (v26-annulus-refwin "RW.Cathode.NW" "TMP.V26.NW"
+    13.85 15.75 -0.66 0.300)
+  (sdedr:define-refinement-size "RD.Cathode.NW"
+    (ms 1.00) (ms 1.00) (ms 0.22)
+    (ms 0.18) (ms 0.18) (ms 0.055))
+  (sdedr:define-refinement-function
+    "RD.Cathode.NW" "PhosphorusActiveConcentration"
+    "MaxTransDiff" 2.1)
+  (sdedr:define-refinement-placement
+    "PL.Cathode.NW" "RD.Cathode.NW" "RW.Cathode.NW")
+
+  ; STI6/7 and substrate pickup: COARSE annular band, no blanket outside.
+  (v26-annulus-refwin "RW.OuterPickup" "TMP.V26.Outer"
+    16.75 19.65 -0.72 0.332)
+  (sdedr:define-refinement-size "RD.OuterPickup"
+    (ms 1.85) (ms 1.85) (ms 0.32)
+    (ms 0.43) (ms 0.43) (ms 0.090))
+  (sdedr:define-refinement-function
+    "RD.OuterPickup" "MaxLenInt"
+    "Silicon" "Oxide" (ms 0.090) 2.0)
+  (sdedr:define-refinement-function
+    "RD.OuterPickup" "DopingConcentration" "MaxTransDiff" 2.5)
+  (sdedr:define-refinement-placement
+    "PL.OuterPickup" "RD.OuterPickup" "RW.OuterPickup")
+  (v26-audit-mesh-only)
+)
+(if (stage>= 5) (define-stage5-mesh))
+
+; =============================================================================
+; 6. Runtime audit before meshing
+; =============================================================================
+; v2.1 precontact BND was clean of the large z=0.300 Oxide-cap anomaly,
+; whereas v2.1 after circular contact imprints, despite no second fix, was not.
+; Therefore the five circular imprints are now executed on bare Bulk.
+; In this diagnostic production attempt, SKIP the redundant second
+; sde:fix-imprint. The earlier pre-contact fix-imprint remains in place.
+; For a controlled same-geometry comparison, change only
+; UseSecondFixImprint to TRUE. Do not change geometry/doping simultaneously.
+(define UseSecondFixImprint FALSE)
+(if UseSecondFixImprint (sde:fix-imprint))
+
+(define StageTag (string-append "M" (number->string MeshStage)))
+(define ModelCheckFile
+  (string-append "n@node@_candidateB_v2p4_" StageTag "_modelcheck.log"))
+(define PreMeshBndFile
+  (string-append "n@node@_candidateB_v2p4_" StageTag "_pre_mesh_bnd.tdr"))
+(define MeshCheckFile
+  (string-append "n@node@_candidateB_v2p4_" StageTag "_mshcheck.cmd"))
+
+; Physical-body and contact diagnostics.
+(display "\n=== Candidate-B v2.4 graded mesh / BREP audit ===\n")
+(display "MeshStage = ") (display MeshStage) (newline)
+(display "Candidate retained cells = ")
+(display (+ (length ActiveSTIBodies) (length UpperSiBodies))) (newline)
+(display "Si x Si cells = ") (display (length UpperSiBodies)) (newline)
+(display "Active-STI independent regions = ")
+(display (length ActiveSTIBodies)) (newline)
+; Make accidental reintroduction of the problematic union visible.
+(display "ActiveSTI union performed = NO (v2.2)\n")
+(display "Second fix-imprint enabled = ") (display UseSecondFixImprint) (newline)
+(display "Physical body count = ") (display (length (get-body-list))) (newline)
+(display "Ref/Eval body count = ") (display (length (get-drs-list))) (newline)
+(display "Anode contact faces = ")
+(display (length (sdegeo:get-contact-facelist "anode"))) (newline)
+(display "Cathode contact faces = ")
+(display (length (sdegeo:get-contact-facelist "cathode"))) (newline)
+(display "Substrate contact faces = ")
+(display (length (sdegeo:get-contact-facelist "substrate"))) (newline)
+
+(define PhysicalEdges (entity:edges (get-body-list)))
+(display "Minimum physical edge length [um] = ")
+(display (sdegeo:min-edge-length PhysicalEdges)) (newline)
+
+; Use the exact overlap check, not only bounding-box overlap.
+(define OverlapPairs (sdegeo:check-overlap (get-body-list) FALSE))
+(if (not (null? OverlapPairs))
+    (begin
+      (display "ERROR: unresolved physical overlaps detected:\n")
+      (display OverlapPairs) (newline)
+      (sde:error "Candidate-B v2.2 physical overlap audit failed")))
+
+(if (= (length (sdegeo:get-contact-facelist "anode")) 0)
+    (sde:error "Candidate-B v2.2: anode contact has no face"))
+(if (= (length (sdegeo:get-contact-facelist "cathode")) 0)
+    (sde:error "Candidate-B v2.2: cathode contact has no face"))
+(if (= (length (sdegeo:get-contact-facelist "substrate")) 0)
+    (sde:error "Candidate-B v2.2: substrate contact has no face"))
+
+(sde:check-model ModelCheckFile)
+(sdeio:save-tdr-bnd (get-body-list) PreMeshBndFile)
+(sdedr:write-cmd-file MeshCheckFile)
+
+; This statement *runs* Sentaurus Mesh under Sentaurus T-2022.03.
+; On success: n@node@_msh.tdr is created in the SWB node work directory.
+; M0 contains geometry only; M1+ includes the frozen analytic PW/DNW/etc.
+; If SNMesh reports "The Brep is not conformal" again, upload the
+; n@node@_msh.log and v2p2 precontact/pre_mesh BND files for pinpointing.
+; Generates n@node@_bnd.tdr, n@node@_msh.cmd, and invokes Sentaurus Mesh.
+; Sentaurus Mesh also writes n@node@_msh.log; use that file as the primary
+; internal mesher diagnostic if this call fails.
+(sde:build-mesh "n@node@")
+
+; =============================================================================
+; 7. Physical Si/BOX/STI material restoration -- after ELECTRICAL MSH SUCCESS
+; =============================================================================
+; The first _msh.tdr above preserves the frozen 2D ELECTRICAL surrogate.
+; Do not alter any of its material/domain/implant parameters.
+;
+; This SECOND mesh uses the same Bulk doping placements, same contact faces,
+; same staircase STI1..5 and STI6/7, same BOX and coordinate system. ONLY the
+; already-existing 69 UpperSi regions change material: Oxide -> Silicon.
+; SDE add-material is a MATERIAL ATTRIBUTE change, not an ACIS cut/union.
+; Avoid any circular-wire imprint or fix-imprint after the conversion;
+; those operations were previously associated with nonconformal BREP.
+;
+; The physical UpperSi is isolated from the doped Bulk by BOX; doping profiles
+; intentionally remain restricted to the Bulk region. Thus the physical MSH
+; contains PW/DNW/NW/P+ doping IN BULK but does not invent an upper-film
+; doping recipe. Optical A can use this physical stack as a reference base.
+;
+; IMPORTANT: This is the Reference / Candidate-B staircase physical stack,
+; NOT the later proposed concentric annular optical-pattern geometry.
+;
+(display "\n=== v2.4 PHYSICAL STACK CONVERSION ===\n")
+(display "UpperSi regions to restore = ")
+(display (length UpperSiBodies)) (newline)
+(if (not (= (length UpperSiBodies) 69))
+    (sde:error "v2.3: unexpected UpperSi body count before material restoration"))
+
+(define (restore-upper-si body)
+  (sde:add-material body "Silicon" (generic:get body "region")))
+(for-each restore-upper-si UpperSiBodies)
+
+; No extra STI/contact transformations here. Check the converted physical model.
+(define PhysicalOverlapPairs
+  (sdegeo:check-overlap (get-body-list) FALSE))
+(if (not (null? PhysicalOverlapPairs))
+    (begin
+      (display "Physical-model unresolved overlap pair(s): ")
+      (display PhysicalOverlapPairs) (newline)
+      (sde:error "v2.3: physical stack overlap audit failed")))
+
+(define PhysicalModelCheckFile
+  (string-append "n@node@_candidateB_v2p4_" StageTag
+                 "_physical_modelcheck.log"))
+(define PhysicalBndFile
+  (string-append "n@node@_candidateB_v2p4_" StageTag
+                 "_physical_pre_mesh_bnd.tdr"))
+(define PhysicalMeshCheckFile
+  (string-append "n@node@_candidateB_v2p4_" StageTag
+                 "_physical_mshcheck.cmd"))
+
+(sde:check-model PhysicalModelCheckFile)
+(sdeio:save-tdr-bnd (get-body-list) PhysicalBndFile)
+(sdedr:write-cmd-file PhysicalMeshCheckFile)
+
+(display "Building SECOND 3D mesh: n@node@_physical_msh.tdr\n")
+; Per T-2022.03 SDE User Guide, sde:build-mesh accepts a file-basename,
+; and saves <basename>_bnd.tdr and <basename>_msh.cmd before calling SMesh.
+; These outputs do NOT overwrite the first n@node@_msh.tdr.
+(sde:build-mesh "n@node@_physical")
+
+(display "\n=== v2.4 GRADED DUAL MSH COMMANDS COMPLETED ===\n")
+(display "Electrical target: n@node@_msh.tdr\n")
+(display "Physical target:   n@node@_physical_msh.tdr\n")
+(display "Verify actual file existence and doping fields in SVisual.\n")
+
+; =============================================================================
+; End of v2.4
+; =============================================================================
