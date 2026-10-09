@@ -99,7 +99,7 @@ Stage 1은 DOE branching 앞에서 한 번만 수행한다. 이 폴더에는 동
 파일:
 
 ```text
-CMP_SPAD_TripleDNW_SProcess_v0.3_Stage2_DOE_PLX_only_RECONSTRUCTED.txt
+CMP_SPAD_TripleDNW_SProcess_v0.3_Stage2_DOE_PLX_only.txt
 ```
 
 Workbench dependency:
@@ -110,7 +110,7 @@ Workbench dependency:
 
 Stage 1의 `n@node|sprocess1@_STI_RESTART_fps.tdr`를 확인한 뒤 `init tdr`로 읽는다. Stage 2에는 SOI region 생성, STI etch/fill 및 STI densification을 다시 넣지 않는다.
 
-이 파일은 **과거 대화에서 작성했던 Stage 2 command를 재구성한 버전**이다. 과거 실행 파일과 바이트 단위로 동일한 원본임이 검증된 것은 아니므로 `RECONSTRUCTED` 표기를 유지한다.
+**실제 실행 원본 확인(2026-10-09):** 사용자가 현재 Sentaurus Workbench에서 실행 중이라고 직접 제공한 Triple-DNW Stage 2 SProcess command를 **코드 내부 수정 없이 원문 그대로** 등록하였다. 기존 재구성 파일은 이를 대체하며 삭제했고, 새 정식 파일명에서는 `_RECONSTRUCTED`를 제거했다. 원본 첨부 파일명은 `붙여넣은 텍스트(1).txt`이다. SWB 변수 12개가 모두 `@PARAMETER@`로 연결되어 있으며, Main/Trim/Deep 세 phosphorus implant 후 PW/NW와 함께 common WELL RTA 1회를 사용한다. 파일 내용은 실제 사용 스냅샷이며, 새로운 시뮬레이션 검증이 완료되었다는 의미는 아니다.
 
 ---
 
@@ -420,14 +420,14 @@ SCR 위치와 electrical characteristics 검증 없이 profile score 최소 조�
 
 ```text
 Triple_DNW/
-├─ CMP_SPAD_TripleDNW_SProcess_v0.3_Stage2_DOE_PLX_only_RECONSTRUCTED.txt
+├─ CMP_SPAD_TripleDNW_SProcess_v0.3_Stage2_DOE_PLX_only.txt
 ├─ CMP_SPAD_TripleDNW_ProfileScreening_SVisualPy_v0.4_DeepTail.md
 └─ README.md
 ```
 
-- **SProcess v0.3:** Stage 1 공통 STI restart부터 Main/Trim/Deep DNW implant, 공통 WELL RTA, final PLX 출력까지 수행하는 **재구성 Stage 2** command이다. 정확한 과거 실행 원본임을 확인한 파일은 아니다.
+- **SProcess v0.3:** 사용자가 2026-10-09에 제공한 **실제 실행 중인 Stage 2 원본**이다. 공통 STI Stage 1 restart를 불러온 뒤 Main/Trim/Deep DNW implant, PW/NW implant, common WELL RTA, final PLX 및 contacts까지 수행한다. 원본 코드 본문은 수정하지 않았다.
 - **SVisualPy v0.4:** 기존 Dual-DNW `SCORE` 계산 방식은 유지하고 deep-tail 진단 기능만 추가한 profile-screening script이다. 현재 파일 형식은 `.md`이며 실행 코드가 Markdown 코드 블록 안에 있다.
-- 공통 Stage 1은 `../Dual_DNW/`에 보관한다. 2026-10-09부터 DOE 결과·입력 CSV도 같은 폴더에 날짜별 파일명으로 보관한다. 아래 12절 참고.
+- 공통 Stage 1은 `../Dual_DNW/`에 보관한다. 시뮬레이션 **분석이 완료된 결과 CSV만** `../../data/Triple-DNW/`에 보관한다. 81-case처럼 결과가 아직 없는 입력 조건표는 GitHub DATA에 올리지 않는다. 아래 12절 참고.
 
 ---
 
@@ -436,6 +436,7 @@ Triple_DNW/
 이 폴더는 Triple-DNW 공정 및 SVisualPy **코드·설정과 실행 절차**만 보관한다. 실제 결과 CSV는 아래 `assets/data/`에서 관리한다. 후속 SWB 입력 조건표는 결과 분석 전에는 GitHub에 보관하지 않는다.
 
 - [Triple-DNW 데이터 README](../../data/Triple-DNW/README.md) — 구조 의미, 45→25→81 DOE의 목적과 데이터·조건표의 구분
+- [Triple-DNW 원본 45-case 실행 결과 A 23행](../../data/Triple-DNW/1006_A.csv) / [B 22행](../../data/Triple-DNW/1006_B.csv)
 - [Triple-DNW 원본 25-case 실행 결과](../../data/Triple-DNW/2026-10-09-triple-dnw-main-to-deep-25cases-results-raw.csv)
 - 81-case 후속 DOE: 40/41로 나눈 SWB 입력 조건표는 **결과 미확보로 GitHub에서 삭제**하였으며, 실험 설계 흐름은 [2026-10-09 연구일지](../../../timeline/2026-10/2026-10-09.md)에 유지한다. 실제 결과 분석 후 `assets/data/Triple-DNW/`에 올릴 예정.
 
