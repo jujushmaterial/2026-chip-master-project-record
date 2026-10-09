@@ -433,10 +433,10 @@ Triple_DNW/
 
 ## 12. DOE 데이터는 별도 assets/data에서 관리
 
-이 폴더는 Triple-DNW 공정 및 SVisualPy **코드·설정과 실행 절차**만 보관한다. 실행 결과 CSV 및 후속 SWB 입력 CSV는 중복을 피하기 위해 아래 별도 데이터 폴더로 옮겼다.
+이 폴더는 Triple-DNW 공정 및 SVisualPy **코드·설정과 실행 절차**만 보관한다. 실제 결과 CSV는 아래 `assets/data/`에서 관리한다. 후속 SWB 입력 조건표는 결과 분석 전에는 GitHub에 보관하지 않는다.
 
 - [Triple-DNW 데이터 README](../../data/Triple-DNW/README.md) — 구조 의미, 45→25→81 DOE의 목적과 데이터·조건표의 구분
 - [Triple-DNW 원본 25-case 실행 결과](../../data/Triple-DNW/2026-10-09-triple-dnw-main-to-deep-25cases-results-raw.csv)
-- [81-case 입력 A 40행](../../data/Triple-DNW/2026-10-09-triple-dnw-81cases-batch-a-40.csv) / [81-case 입력 B 41행](../../data/Triple-DNW/2026-10-09-triple-dnw-81cases-batch-b-41.csv)
+- 81-case 후속 DOE: 40/41로 나눈 SWB 입력 조건표는 **결과 미확보로 GitHub에서 삭제**하였으며, 실험 설계 흐름은 [2026-10-09 연구일지](../../../timeline/2026-10/2026-10-09.md)에 유지한다. 실제 결과 분석 후 `assets/data/Triple-DNW/`에 올릴 예정.
 
 25-case 실행 결과 분석과 81-case DOE 설계의 자세한 근거는 [2026-10-09 B 연구일지](../../../timeline/2026-10/2026-10-09.md)에 남긴다.
