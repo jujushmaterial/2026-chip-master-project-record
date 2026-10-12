@@ -8,6 +8,7 @@
 
 - [CMP_SPAD_PW_ProfileScreening_SVisualPy_v1.0.py](CMP_SPAD_PW_ProfileScreening_SVisualPy_v1.0.py): CMP2 원본 455줄을 **변경 없이 보존**.
 - `README.md`: 코드 사용법·지표·근거·한계 설명.
+- PW DOE 입력: [27조건 CSV](../../data/PW_Propile/CMP_SPAD_PW_Case27_27DOE_SWB.csv) ([데이터 README](../../data/PW_Propile/README.md)). 아직 SProcess 결과가 아닌 입력표다.
 - CMP2의 원본 `.py`와 `.txt` 내용은 동일하므로 동일 코드의 중복 사본은 올리지 않는다.
 - SProcess는 기존 [Triple-DNW Stage 2 v0.3](../Triple_DNW/CMP_SPAD_TripleDNW_SProcess_v0.3_Stage2_DOE_PLX_only.txt)을 그대로 사용한다.
 
