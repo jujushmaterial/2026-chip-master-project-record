@@ -4,7 +4,7 @@
 
 ## 1. 배경과 파일
 
-[Triple-DNW v0.4](../Triple_DNW/CMP_SPAD_TripleDNW_ProfileScreening_SVisualPy_v0.4_DeepTail.md)의 composite SCORE는 PW 직접 항목 15%, DNW 직접 항목 70%로 구성되었다. 따라서 DNW 조건을 고정한 PW DOE에서는 PW의 shallow peak 및 junction-side tail에 집중하는 별도 분석이 필요했다.
+[Triple-DNW v0.4](../Triple_DNW/CMP_SPAD_TripleDNW_ProfileScreening_SVisualPy_v0.4_DeepTail.md)의 composite SCORE는 PW 직접 항목 15%, DNW 직접 항목 45%, 공동 지표 35%, Split 5%로 구성되었다. 따라서 DNW 조건을 고정한 PW DOE에서는 PW의 shallow peak 및 junction-side tail에 집중하는 별도 분석이 필요했다.
 
 - [CMP_SPAD_PW_ProfileScreening_SVisualPy_v1.0.py](CMP_SPAD_PW_ProfileScreening_SVisualPy_v1.0.py): CMP2 원본 455줄을 **변경 없이 보존**.
 - `README.md`: 코드 사용법·지표·근거·한계 설명.
