@@ -1,6 +1,6 @@
-# PW_Propile — PW-only SVisualPy (v1.0 원본 + v1.2.1 CompactDOE)
+# PW_Propile — PW-only SVisualPy (v1.0 / v1.2.1 / v1.3.0 보관)
 
-2026-10-12 CMP2에서 제작한 **PW 중심 profile-screening v1.0 원본**과 2026-10-15에 실제 27조건 분석에 사용한 **v1.2.1 CompactDOE 최종판**을 함께 보관한다. 폴더명 `PW_Propile`은 요청한 표기를 따른다. 이 작업은 공개 문헌 제약 기반 **surrogate baseline** 재현에 속하며, 실제 파운드리 레시피를 복원하거나 전기적 baseline을 확정한 결과가 아니다.
+2026-10-12 CMP2에서 제작한 **PW 중심 profile-screening v1.0 원본**, 2026-10-15에 실제 27조건 분석에 사용한 **v1.2.1 CompactDOE**, 그리고 2026-10-19에 29조건 심층 Peak 분석에 사용한 **v1.3.0 PeakAudit**를 함께 보관한다. 폴더명 `PW_Propile`은 요청한 표기를 따른다. 이 작업은 공개 문헌 제약 기반 **surrogate baseline** 재현에 속하며, 실제 파운드리 레시피를 복원하거나 전기적 baseline을 확정한 결과가 아니다.
 
 ## 1. 배경과 파일
 
@@ -230,3 +230,91 @@ SCORE는 모든 세부 오차를 유한한 penalty로 바꾼 뒤 가중 합산�
 
 - [2026-10-15-1 — DNW Case 15 후보 선정](../../../timeline/2026-10/2026-10-15-1.md).
 - [2026-10-15-2 — PW 결과 분석과 Deep 9조건 설계](../../../timeline/2026-10/2026-10-15-2.md).
+
+
+---
+
+## 14. 2026-10-19 — v1.3.0 PeakAudit: Deep Peak를 놓치지 않는 최종 분석 버전
+
+### 원본 코드와 도입 이유
+
+- **[CMP_SPAD_PW_ProfileScreening_SVisualPy_v1.3.0_PeakAudit.py](CMP_SPAD_PW_ProfileScreening_SVisualPy_v1.3.0_PeakAudit.py)** — 2026-10-19에 29조건 DOE를 분석한 **원본 Python 파일(720줄)**. 덮어쓰지 않고 v1.0·v1.2.1과 함께 보존한다.
+- [10월 19일 연구일지](../../../timeline/2026-10/2026-10-19.md) — 실제 29조건 분석, 버전 변경 이유 및 18조건 후속 DOE 의사결정.
+- [10월 16일 DOE 설계](../../../timeline/2026-10/2026-10-16.md) — 29조건 입력 구성 및 고정조건의 출처.
+
+v1.2.1의 **PW12_MAIN_NM은 30~170 nm 범위 내 얕은 최대 농도의 깊이**로, 전체 30~900 nm에서 가장 농도가 높은 피크의 깊이가 아니었다. 또한 기존 Split 검사창 160~350 nm는 Deep Energy 증가로 350 nm 너머에 형성되는 두 번째 피크를 놓칠 수 있었다. 이에 v1.3.0에서 **얕은 검색창은 하위 호환으로 유지하면서 전역 최대/깊은 국소 피크를 별도로 추출**한다.
+
+### 14.1 탐지 방식과 한계
+
+| 항목 | v1.2.1 | v1.3.0 |
+|---|---|---|
+| Main Peak 출력 | PW12_MAIN_NM (30~170 nm 내 최대) | 기존 정의 및 이름 유지 |
+| Deep Peak 검색 | 160~350 nm 위주 | **30~900 nm 검색창에서 얕은 Peak 이후 국소 극대 탐색** |
+| Global Peak | 별도 SWB 진단 없음 | **원본 PLX의 30~900 nm 샘플 중 최대** |
+| Shallow Peak 판별 | 구간 경계점도 Main처럼 표시 가능 | **실제 국소 최대 해상 여부 SHALLOW_RESOLVED 추가** |
+| Second Peak 판별 | 좁은 범위의 rebound/split | **5 nm grid, smoothing 5 points, 국소 Peak 진단 추가** |
+| SCORE / REBOUND | v1.2.1 기준 | **변경된 extended rebound**, 버전 간 수치 직접 비교 금지 |
+| SWB Output | 8개 | **기존 8개+선택 진단 10개** |
+| Detailed output | metrics / depth points / profile F | **기존 상세 출력+peak_audit.csv / all_metrics.csv** |
+
+Global Peak는 측정한 원본 PLX 샘플 범위의 최댓값이지 연속 수학곡선의 정밀 극대값을 보증하는 값은 아니다. Second Peak는 5 nm 보간 및 5-point smoothing에 따른 국소 피크이므로 두 Peak 위치가 몇 nm 다를 수 있다.
+
+### 14.2 SWB Output Variables
+
+기존 **8개를 삭제하거나 이름을 변경하지 않는다.**
+
+| 기존 Output | 의미 |
+|---|---|
+| PW12_SCORE | v1.3.0 기준 weighted surrogate mismatch (작을수록 유리) |
+| PW12_MAIN_NM | **30~170 nm 얕은 구간 최대 농도의 깊이** |
+| PW12_MAIN_R | 얕은 농도 최대값 / SDE 얕은 기준 최대값 |
+| PW12_B462_R | 462.6966588 nm BActive / SDE BActive |
+| PW12_REBOUND_R | 얕은 Peak 이후 Valley→Second Peak 재상승 / 얕은 Peak |
+| PW12_SPLIT_OK | v1.3.0 잠정 Split 통과 여부 |
+| PW12_ALL_OK | 얕은 Peak/B462/Split의 잠정 종합 관문 |
+| PW12_RUN_OK | 분석 정상 완료 |
+
+**추가로 Output Variables에 등록할 수 있는 10개:** (모든 값은 코드에서 DOE 출력되며, SWB 열에 보고 싶을 때만 별도 등록한다.)
+
+| 신규 Output | 의미 |
+|---|---|
+| PW12_SHALLOW_PEAK_NM | 얕은 검색창 최대값 위치 |
+| PW12_SHALLOW_RESOLVED | 진짜 얕은 국소 Peak가 확인되었는지 |
+| PW12_GLOBAL_PEAK_NM | 원본 PLX의 30~900 nm 전역 최대 위치 |
+| PW12_GLOBAL_PEAK_CM3 | 해당 전역 최대 BActive 농도 [cm⁻³] |
+| PW12_GLOBAL_AT_BOUNDARY | 전역 Peak가 검색창 경계 부근인지 |
+| PW12_SECOND_PEAK_NM | 얕은 Peak 다음에 검출된 대표 국소 Peak 위치 |
+| PW12_SECOND_OVER_SHALLOW_R | 두 번째 Peak / 얕은 Peak 농도비 |
+| PW12_DOMINANT_SECOND | 두 번째 Peak가 얕은 Peak보다 높은지 |
+| PW12_GLOBAL_DEEP_DOMINANT | 전역 최대가 얕은 Peak보다 충분히 깊고 높은지 |
+| PW12_SECOND_FOUND | 분리된 깊은 국소 Peak 검출 여부 |
+
+### 14.3 입력·산출물·버전 관리
+
+- SWB 의존성: **#setdep @node|sprocess@**. 실제 입력: **n@node|sprocess@_F_r4p6.plx** (Final F, BActive/PActive).
+- SDE 기준값은 **r=4.6875 µm cut의 실제 SDE PLX 숫자 샘플을 코드에 내장**한다. 실제 fab doping profile 또는 독립 실측 데이터가 아니다.
+- 노드별 접두사: **n{VIS_NODE}_PW_v1p3p0**. 상세 결과: metrics.txt, depth_points.csv, profile_F.csv, all_metrics.csv, peak_audit.csv (이외 시각화 보조 CSV/plot은 코드 기준).
+- SProcess .cmd 및 **SWB INPUT Parameter는 변경하지 않는다.** 2026-10-19에 확인한 실제 SWB 입력 12개는 다음과 같다:
+  **DNW_DOSE, DNW_E, DNW_TRIM_E, DNW_DEEP_E, DNW_TRIM_FRAC, DNW_DEEP_FRAC, PW_TRIM_E, PW_FIXED_E, PW_TRIM_FRAC, PW_TOTAL_DOSE, RTA_T, RTA_t**.
+  이 실험에서는 **PW_FIXED_FRAC는 SWB 입력 Parameter로 등록하지 않았으며**, 기존 Dual-PW 코드에서는 1−PW_TRIM_FRAC로 도출한다. 과거 섹션에 등록 여부를 추정해 적었던 문구보다 이 실제 12열 설정을 우선한다.
+- 기존 등록 SWB Parameter를 SProcess command에서 상수로 하드코딩하지 않고 **@PARAMETER@** 참조를 유지한다. 변하지 않는 값도 SWB experiment row로 고정한다.
+- v1.2.1과 v1.3.0 간 **REBOUND_R 및 SCORE가 29조건 중 18조건에서 변했음**. 동일 버전의 동일 기준으로 재분석해야 SCORE 비교 가능.
+- **SCORE는 100−SCORE 재현율이 아니고, ALL_OK도 최종 SDevice 합격 판정이 아니다.**
+
+### 14.4 실제 29조건 점검
+
+2026-10-19 사용자가 제공한 29조건 SWB CSV 분석 결과:
+
+- **RUN_OK 29/29**, **SPLIT_OK 0/29**, **ALL_OK 0/29**.
+- **SECOND_FOUND 29/29**, **DOMINANT_SECOND 29/29**, **GLOBAL_DEEP_DOMINANT 29/29**.
+- **SHALLOW_RESOLVED 27/29**; 2개 조건에서는 얕은 170 nm 끝점이 진짜 국소 Peak로 확인되지 않음.
+- B462_R이 가장 가까웠던 조건: **105 keV / 2.0×10¹³ cm⁻², 1.06122**. 그러나 300 nm Deep Peak가 얕은 Peak의 **1.53665배**이며 SPLIT_OK=0.
+- 결과 원본 1015PW(1).csv와 Final PLX는 이번 저장소 변경 범위에 포함하지 않았다.
+
+### 14.5 다음 설계 A 18조건에서의 해석 주의
+
+2026-10-19 확정된 후속 DOE는 **Energy 140/145/150/155/160/165 keV×각 Energy별 Deep Dose 3수준=18개**로, **Group 1과 2에 각 9조건**을 배치한다. 세부 범위는 [10월 19일 연구일지](../../../timeline/2026-10/2026-10-19.md) 참조.
+
+이는 Deep Implant의 **Junction-side tail** 기여를 최적화하는 중간 screening이다. Mid Implant는 아직 없고, 저Dose로 Main Peak가 낮아질 수 있기 때문에 **ALL_OK=0만으로 해당 후보를 일괄 배제하지 않는다**. B462_R과 함께 350~500 nm의 SDE 대비 과다 BActive, 150~350 nm 부족 농도 및 Split 형태를 확인한다.
+
+현재 v1.3.0 SWB 요약에는 구간별 SDE 대비 최대 초과·적분, Mid 부족분 적분의 전용 3개 변수는 없다. 이들은 **profile_F.csv에서 후처리하거나 향후 별도 revision으로 추가할 수 있으나, v1.3.0 원본은 수정하지 않는다.** v1.3.1 확장은 아직 실행되지 않았다. 실제 **SCR 위치와 VBD, field, PEB, dark-current, ATP는 SDevice 확인 전까지 미검증**이다.
