@@ -6,9 +6,9 @@
 
 - **코드:** [CMP_SPAD_TriplePW_155Deep_Mid18_SProcess_v0.4.cmd](CMP_SPAD_TriplePW_155Deep_Mid18_SProcess_v0.4.cmd)
 - **출처:** 기존 [Triple-DNW Stage 2 v0.3](../Triple_DNW/CMP_SPAD_TripleDNW_SProcess_v0.3_Stage2_DOE_PLX_only.txt)의 공정/마스크 흐름을 유지하면서 Mid Boron Implant, 14개 SWB 입력, Triple-PW Dose 계산을 추가한 v0.4.
-- **연구 기록:** [2026-10-20 Timeline](../../../timeline/2026-10/2026-10-20.md)
+- **연구 기록:** [2026-10-20 Timeline](../../../timeline/2026-10/2026-10-20.md), [2026-10-21 Timeline](../../../timeline/2026-10/2026-10-21.md)
 - **후처리:** [PW SVisualPy v1.3.0 PeakAudit](../PW_Propile/CMP_SPAD_PW_ProfileScreening_SVisualPy_v1.3.0_PeakAudit.py)
-- **상태:** 명령·DOE 설계 및 입력 파라미터 계산 확인. **이번 Triple-PW 18조건의 실제 SProcess 실행/PLX 검증 및 SDevice 검증은 미완료.** Sentaurus 엔진 실행 성공을 보장하지 않는다.
+- **상태 (2026-10-20 기록 시점):** 명령·DOE 설계 및 입력 파라미터 계산 확인. 당시 Triple-PW 18조건은 미실행이었다. **2026-10-21에 1차 18조건의 실제 SProcess/SVisualPy 결과를 확인했으며**, 아래 §9에서 후속 현황을 기록한다. SDevice 검증은 미완료.
 
 본 구현은 공개문헌 제약 기반 **surrogate process**이며 foundry 제조 recipe 복원이 아니다.
 
@@ -99,3 +99,48 @@ PW_MID_FRAC   = PW_MID_DOSE / PW_TOTAL_DOSE
 - 이 폴더는 **Triple-PW Stage 2 공정 코드와 설명**을 보존한다. 기존 `Triple_DNW` 원본, `PW_Propile` 분석기 원본을 덮어쓰지 않는다.
 - 재현에 필요한 `sprocess1` STI seed/리소스는 현재 SWB 프로젝트의 Stage 1을 사용한다.
 - 추가 변경 시 `v0.4`를 조용히 덮어쓰지 말고 버전 변경과 Timeline의 의사결정 근거를 함께 기록한다.
+
+---
+
+## 9. 2026-10-21 실제 1차 Mid 결과와 후속 DOE
+
+### 9.1 완료된 1차 Triple-PW Mid 18조건 (65~90 keV)
+
+10월 20일 설계한 1차 DOE **Group1 (65/75/85 keV) 9조건 + Group2 (70/80/90 keV) 9조건**은 다음 날 실제 결과 `1020A.csv`, `1020B.csv`로 회수·분석되었다. 동일한 SVisualPy v1.3.0 PeakAudit에서:
+
+| 결과 | 18조건 집계 |
+|---|---:|
+| PW12_RUN_OK=1 | **18/18** |
+| PW12_SPLIT_OK=1 | **16/18** |
+| PW12_ALL_OK=1 | **12/18** |
+| PW12_SECOND_FOUND=1 | **11/18** |
+| 최저 PW12_SCORE | **29.3376483366** |
+
+- 최저 SCORE: **Mid 80 keV / 9×10¹² cm⁻²**, MAIN_R **1.00230482958**, B462_R **1.01569023746**. 내부 screening에서는 유망하지만 SDE와의 깊이별 잔차가 남는다.
+- 85 keV / 9×10¹²: SCORE **34.4511621648**, MAIN_R **0.958232549563**, B462_R **1.04486825776**, SECOND Peak 약 **240 nm**. 사용자 SDE 오버랩에서 0.5~0.65 µm 일부 구간의 Boron 부족이 관찰되었다.
+- 85 keV에서는 Mid Dose 3/6/9×10¹²를 비교했다. 높은 Dose는 Main·Mid 농도를 높이지만 Shoulder 및 Junction-side 과다농도와 trade-off가 있다.
+- **SPLIT_OK=1은 두 번째 피크가 모두 사라졌다는 의미가 아니다.** 지표는 SVisualPy의 잠정 surrogate criteria이다.
+- 462.6966588 nm는 SDE BActive/PActive 도핑 교차 anchor이며 실측 Junction 또는 SDevice SCR가 아니다.
+
+### 9.2 후속 고Energy·저Dose 18조건 (설계 완료 / 시뮬레이션 전)
+
+**의사결정:** 기존 SCORE의 Main Peak 항목이 좋은 후보라도 0~150 nm/약 0.5~0.65 µm의 SDE 오버랩 잔차가 남는다. 이번에는 Mid 분포를 깊게 이동시키고 Dose를 낮추는 방향을 실험하되, Main_R 감소는 별도 Shallow 보정 전까지 기록하여 추후 평가한다. 이것은 **개선이 검증된 결론이 아닌 실험 가설**이다.
+
+| 그룹 | PW_MID_E [keV] | Energy별 PW_MID_DOSE [×10¹² cm⁻²] | 조건 |
+|---|---|---|---:|
+| Group1 | 87.5 / 92.5 / 97.5 | 4.5/5.5/6.5 ; 3.0/4.0/5.0 ; 2.0/3.0/4.0 | 9 |
+| Group2 | 90 / 95 / 100 | 3.5/4.5/5.5 ; 2.5/3.5/4.5 ; 1.5/2.5/3.5 | 9 |
+| **합계** | **6개 Energy** | **각 3개 Dose** | **18** |
+
+- Full-factorial 공통 Dose grid가 아닌 **Energy별 dose-adjusted screening**. Dose 수준이 다르므로 Energy 주효과는 바로 분리할 수 없다.
+- **기존 14개 SWB Parameter 순서 및 Triple-PW SProcess v0.4 그대로 사용**. Fixed 36 keV/6.18×10¹², Deep 155 keV/2.8×10¹², DNW Case15, common WELL RTA 1050°C/30s 유지.
+- `PW_TOTAL_DOSE = Fixed + Mid + Deep`, `PW_TRIM_FRAC = Deep/PW_TOTAL_DOSE`를 각 SWB Experiment에서 동기화. 전체18 및 Group1/Group2 각9 CSV **산술 검증 완료**.
+- 새 CSV 파일은 이 GitHub 커밋에 **포함하지 않음**. 현재 후속 18조건에 대한 **Sentaurus 결과는 미확보**.
+
+### 9.3 다음 검증
+
+- 약 **0.5~0.65 µm**에서 SDE BActive 부족이 감소했는지, **350~500 nm**의 초과농도와 **462.7 nm B462_R**이 어떻게 변화하는지 별도로 비교한다.
+- **150~350 nm** Shoulder/Second Peak를 확인하고, 0~150 nm의 Main Peak 및 표면 차이는 후속 Shallow/Surface 보정 대상으로 분리한다.
+- 후보별 Final PLX의 구간별 부족/초과 적분 및 BActive=PActive 실제 crossing 위치를 추출한 뒤 SDevice **VBD/SCR/field/PEB/ATP/dark-current/온도** 검증으로 이어간다.
+
+상세 판단 근거와 활동의 완료/미완료 구분: [2026-10-21 연구일지](../../../timeline/2026-10/2026-10-21.md).
