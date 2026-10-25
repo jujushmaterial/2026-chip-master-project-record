@@ -144,3 +144,69 @@ PW_MID_FRAC   = PW_MID_DOSE / PW_TOTAL_DOSE
 - 후보별 Final PLX의 구간별 부족/초과 적분 및 BActive=PActive 실제 crossing 위치를 추출한 뒤 SDevice **VBD/SCR/field/PEB/ATP/dark-current/온도** 검증으로 이어간다.
 
 상세 판단 근거와 활동의 완료/미완료 구분: [2026-10-21 연구일지](../../../timeline/2026-10/2026-10-21.md).
+
+---
+
+## 10. 2026-10-23 고Energy·저Dose 결과와 ABC108 후속 DOE
+
+### 10.1 고Energy·저Dose Mid 18조건 실행 결과
+
+10월 21일 설계했던 **87.5~100 keV / Energy별 저Dose Mid 18조건**은 `1021A.csv`, `1021B.csv`로 결과를 회수하여 SVisualPy v1.3.0 및 SDE 오버랩을 검토했다. 이 절은 10월 21일 설계 당시의 §9.2 **'실행 전' 기록을 덮어쓰지 않는 후속 결과**이다.
+
+| 지표 | 직전 1차 Mid DOE | 후속 고Energy·저Dose Mid DOE |
+|---|---:|---:|
+| RUN_OK | 18/18 | 18/18 |
+| SPLIT_OK | 16/18 | 12/18 |
+| ALL_OK | 12/18 | 4/18 |
+| SECOND_FOUND | 11/18 | 18/18 |
+| 최저 SCORE | 29.33765 | 38.46906 |
+
+- 새 DOE의 최저 SCORE 후보는 **87.5 keV / 6.5×10¹² cm⁻²**이다(`MAIN_R=0.88926`, `B462_R=1.02792`, `REBOUND_R=0.02851`).
+- Mid Dose **4.5×10¹² cm⁻² 고정**에서 87.5/90/95 keV 순으로 SCORE **38.61190/40.96787/45.68923**, MAIN_R **0.85290/0.84581/0.83374**, B462_R **0.99975/1.01087/1.04183**, REBOUND_R **0.00512/0.01943/0.05892**.
+- PLX 시각비교에서도 87.5 keV 후보가 90/95 keV 대비 Main–Mid 구간의 SDE 기준형상에 가까웠다. 따라서 **고Energy·저Dose에서 의도한 profile-shape 개선은 확인되지 않았고**, 저Energy·고Dose 및 다중 PW 주입 보정 방향으로 전환했다.
+- 0.5~0.65 µm 깊이의 부족 여부는 **원시 PLX의 구간별 오차 적분 전에는 확정하지 않는다**. SCORE는 전기적 소자 성능의 직접 척도가 아니다.
+
+### 10.2 PLX 직접비교에 따른 세 Implant 보정 방향
+
+| 구간/변수 | 보정 방향 [surrogate DOE assumption] | 목표 및 제약 |
+|---|---|---|
+| PW Fixed (Shallow) | Energy 36 keV 유지, Dose 6.18→최대 9.0×10¹² | Peak 위치 유지 및 농도 보정; Mid 기여와 과보정 감시 |
+| PW Mid | Energy 70~85 keV 방향으로 낮추고 Dose 5~11×10¹² 탐색 | Main–Mid 부족 보완; Second Peak·Shoulder 감시 |
+| PW Deep (레거시 `PW_TRIM_E`) | Energy 155→145~150 keV, Dose 2.8→최대 3.6×10¹² | Mid–Deep 연결부 보완 가설; B462_R/깊은 Tail·도핑 교차 변화 감시 |
+
+세 주입의 BActive 기여는 공간적으로 겹친다. **Shallow, Mid, Deep 농도를 각자 독립된 세 영역에서만 변화시킨다는 가정은 사용하지 않는다.**
+
+### 10.3 3일 무인 병렬 실행을 위한 ABC108
+
+실행 중 추가 조합 설계/피드백 반영이 어려워 **A·B·C 그룹 각 36행, 총 108행**을 사전에 확정했다.
+
+| 그룹 | Shallow Dose [×10¹²] | Mid Energy [keV] | Mid Dose [×10¹²] | Deep Energy [keV] | Deep Dose [×10¹²] | 행 |
+|---|---|---|---|---|---|---:|
+| **A** | 6.18 / 7.6 / 9.0 | 70 / 75 / 80 | 5 / 7 / 9 / 11 | 155 | 2.8 | 36 |
+| **B** | 6.18 | 75 / 85 | 5 / 7 / 9 | 145 / 150 / 155 | 2.8 / 3.4 | 36 |
+| **C** | 7.0 / 8.0 / 9.0 | 70 / 75 / 80 | 6 / 8 | **(150, 3.2), (145, 3.6) 쌍** | 왼쪽 Energy와 쌍 지정 | 36 |
+| **합계** | | | | | | **108** |
+
+- Group C Deep Energy/Dose는 쌍으로 설정한다. 독립적인 Deep Energy/Dose 효과는 Group B를 활용해 해석한다.
+- Group A와 B 사이에 같은 Shallow 6.18/Deep 155·2.8/Mid 75·(5,7,9)의 **3중복 조건**이 존재하여, **실행 행 108 / 고유 조합 105**이다.
+- 기존 정상 분석된 **Mid 80 keV/9×10¹², Shallow 6.18, Deep 155/2.8**(A) 및 **Mid 85 keV/9×10¹², Shallow 6.18, Deep 155/2.8**(B)를 포함한다.
+- DNW Case 15와 WELL 공통 RTA 1050°C/30s, `PW_FIXED_E=36` keV를 고정한다. PW Shallow Energy는 고정하되 **Dose는 A/C에서 변화**한다.
+- 조건당 `PW_TOTAL_DOSE=Shallow+Mid+Deep`, `PW_TRIM_FRAC=Deep/PW_TOTAL_DOSE`를 계산하여 기존 14개 SWB Input Parameter와 일관되게 연결한다. `PW_FIXED_DOSE`는 내부 파생값이고 별도 SWB Input Parameter가 아니다.
+
+사용자 제공 스크린샷에서 **A/B 그룹의 일부 SWB 입력 열과 셀 그룹화**를 확인했다. **CSV 108행의 산술 검증 완료**와 **SWB 전체 import/3일간의 실제 SProcess 성공**은 별개이다.
+
+### 10.4 생성 DOE 파일 및 연구 상태
+
+로컬에서 생성·검산한 파일명:
+
+- `CMP_SPAD_TriplePW_ABC108_GroupA_36_SWB_14Params_NoIndex.csv`
+- `CMP_SPAD_TriplePW_ABC108_GroupB_36_SWB_14Params_NoIndex.csv`
+- `CMP_SPAD_TriplePW_ABC108_GroupC_36_SWB_14Params_NoIndex.csv`
+- `CMP_SPAD_TriplePW_ABC108_ALL108_SWB_14Params_NoIndex.csv`
+- `CMP_SPAD_TriplePW_ABC108_DOE_설계및검증.md`
+
+**이 GitHub 변경에는 DOE CSV, PLX 원본 및 그래프 이미지 파일을 업로드하지 않았다.** SProcess v0.4의 등록 SWB Parameter 매크로와 공정 코드를 변경하지 않았다.
+
+다음 단계는 108조건의 Final PLX 수집, **0~150 / 150~350 / 350~500 / 500~650 nm**의 SDE 대비 부족·초과 정량화, `B462_R` 및 실제 도핑 교차 위치 확인이다. 최종 electrical equivalent baseline의 SDevice VBD/SCR/field 검증과 B의 PEB/dark-current/ATP/온도 평가는 여전히 후속 과제다.
+
+상세 결과와 방향 전환 근거: **[2026-10-23 연구일지](../../../timeline/2026-10/2026-10-23.md)**.
