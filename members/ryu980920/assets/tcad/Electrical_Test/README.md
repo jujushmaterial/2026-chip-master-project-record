@@ -83,3 +83,17 @@ Stage 1 STI densification과 Stage 2의 추가 **P+ contact activation spike(105
 | 실제 SWB 전 노드 실행·물리량 정합 | **아직 실행 검증 전** |
 
 기존 [Triple-PW v0.4 PLX-only 덱](../Triple_PW/CMP_SPAD_TriplePW_155Deep_Mid18_SProcess_v0.4.cmd)과 원본 연구일지는 그대로 유지한다. 최종 전기적 동등성 주장은 실제 SDevice 결과 확보 후 판단한다.
+
+## 07. SDE vs SProcess 전계·Avalanche 15.0 V 비교 진단 (2026-10-29 추가)
+
+기존 06 VBD/SCR 분석과 **독립적인 SVisualPy 코드**를 추가했다. 공식 baseline과 SProcess 각각의 `V150_des.tdr`을 동일 **15.0 V** 조건으로 읽고 중앙 r=4.6875 µm, edge r=12.5 µm 및 주변 r=16/17/18 µm에서 `|E|`와 `AvalancheGeneration`을 공통 z 기준면으로 보정하여 비교한다. **06의 15.6 V SCR 추출 기준, 05 SDevice Physics 및 SWB 등록 Parameter는 변경하지 않는다.**
+
+- [07_SVisualPy_Field_Diagnostic.py](07_SVisualPy_Field_Diagnostic.py) — 실제 SWB SVisual Python 모드 입력용 전체 코드
+- [07_SVisualPy_Field_Diagnostic_Code.md](07_SVisualPy_Field_Diagnostic_Code.md) — Markdown 코드 복사본
+- [07_Field_Diagnostic_Usage.md](07_Field_Diagnostic_Usage.md) — 실행 방법, SDE TDR 경로 연결, CSV/SVG 출력 정의, 해석 주의사항
+
+**필수 외부 입력:** 공식 SDE의 `V150_des.tdr`은 동일 SProcess SWB branch에서 자동으로 전달되지 않는다. 해당 파일을 진단 노드 실행 디렉터리의 `SDE_baseline_V150_des.tdr`로 복사하거나 `CMP_SPAD_SDE_V150_TDR` 환경변수에 절대 경로를 지정한다. SProcess 측은 `n@node|sdevice@_V150_des.tdr`로 해당 실험을 자동 참조한다.
+
+**출력:** 5개 위치의 비교 CSV, 각 위치의 E-field SVG, AvalancheGeneration이 존재하면 추가 SVG, peak summary CSV, audit TXT. 전체 Silicon 최대 전계와 좌표는 설치된 SVisualPy의 2D `calculate_field_value` API가 지원될 때에만 audit에 기록하며, 지원되지 않으면 `UNAVAILABLE`로 표기한다. Cutline 최대값을 2D 전체 최대값으로 대체하지 않는다.
+
+**검증 상태:** Python 구문 및 Mock SVisualPy 실행 검증 완료. **실제 Sentaurus Visual T-2022.03에서의 원본 TDR 실행과 추출 결과는 아직 미검증.**
