@@ -118,13 +118,13 @@ Stage 1 STI densification과 Stage 2의 추가 **P+ contact activation spike(105
 
 ### 기존 15.0 V TDR 비교 결과
 
-이전에 보고된 \`n5_V150_des.tdr\`(공통 SDE)과 \`n19_V150_des.tdr\`(SProcess)을 비교한 값이다. **원본 TDR은 이 레포에 등록되지 않았고 이 변경에서 재추출하지 않았다.**
+이전에 보고된 `n5_V150_des.tdr`(공통 SDE)과 `n19_V150_des.tdr`(SProcess)을 비교한 값이다. **원본 TDR은 이 레포에 등록되지 않았고 이 변경에서 재추출하지 않았다.**
 
 | 지표 (15.0 V) | 공통 SDE | SProcess |
 |---|---:|---:|
-| 중앙 r=4.6875 µm 최대 \`|E|\` [kV/cm] | 404.23 | 504.25 |
+| 중앙 r=4.6875 µm 최대 `|E|` [kV/cm] | 404.23 | 504.25 |
 | 중앙 최대 전계 깊이 [nm] | 165 | 165 |
-| 전체 Silicon 최대 \`|E|\` [kV/cm] | 535.64 | 570.63 |
+| 전체 Silicon 최대 `|E|` [kV/cm] | 535.64 | 570.63 |
 | Net Doping 0 교차 깊이 [nm] | 약 162.7 | 약 166.7 |
 
 **2026-10-29 결정:** 공통 SDE Electrical Baseline을 바꾸지 않고, Triple-DNW + Triple-PW 및 공통 RTA 조건을 **B 공정 개선용 출발 Recipe(P0)** 로 고정한다. 이는 **추가 Baseline-fitting을 멈추는 결정**이지 완전 전기적 동등성, 15.6 V SCR 정합, ATP/PEB/DCR 개선을 입증한 것이 아니다. Quadruple-DNW 확장은 사용하지 않는다.
