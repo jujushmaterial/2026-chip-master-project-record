@@ -97,3 +97,34 @@ Stage 1 STI densification과 Stage 2의 추가 **P+ contact activation spike(105
 **출력:** 5개 위치의 비교 CSV, 각 위치의 E-field SVG, AvalancheGeneration이 존재하면 추가 SVG, peak summary CSV, audit TXT. 전체 Silicon 최대 전계와 좌표는 설치된 SVisualPy의 2D `calculate_field_value` API가 지원될 때에만 audit에 기록하며, 지원되지 않으면 `UNAVAILABLE`로 표기한다. Cutline 최대값을 2D 전체 최대값으로 대체하지 않는다.
 
 **검증 상태:** Python 구문 및 Mock SVisualPy 실행 검증 완료. **실제 Sentaurus Visual T-2022.03에서의 원본 TDR 실행과 추출 결과는 아직 미검증.**
+
+## 08. 2026-10-29 후속 — 실제 전기적 비교 결과 및 SProcess Recipe(P0) Freeze
+
+> 상단의 **2026-10-26 상태**와 07절의 **진단 코드 검증 상태**는 각각 작성 당시의 이력이다. 이 후속 절은 별도로 보고된 기존 실행 결과 및 2026-10-29의 Freeze 결정을 기록한다. **07 진단 코드가 실제 원본 TDR에서 실행 검증됐다는 뜻이 아니다.**
+
+자세한 결과 및 결정 근거: [2026-10-29 연구일지](../../../timeline/2026-10/2026-10-29.md).
+
+### 기존 RTA 실험 VBD 결과 취합
+
+| Common WELL RTA | VBD [V] | 비고 |
+|---|---:|---|
+| 1000°C / 10 s | 15.02752 | 성공 |
+| 1000°C / 30 s | 15.02851 | 성공 |
+| 950°C / 10 s | — | 수치 수렴 실패 |
+| 950°C / 30 s | 15.04284 | 성공 |
+| 1050°C / 30 s | 15.02598 | 성공 |
+
+성공 4조건의 VBD 범위는 **16.86 mV**다.
+
+### 기존 15.0 V TDR 비교 결과
+
+이전에 보고된 \`n5_V150_des.tdr\`(공통 SDE)과 \`n19_V150_des.tdr\`(SProcess)을 비교한 값이다. **원본 TDR은 이 레포에 등록되지 않았고 이 변경에서 재추출하지 않았다.**
+
+| 지표 (15.0 V) | 공통 SDE | SProcess |
+|---|---:|---:|
+| 중앙 r=4.6875 µm 최대 \`|E|\` [kV/cm] | 404.23 | 504.25 |
+| 중앙 최대 전계 깊이 [nm] | 165 | 165 |
+| 전체 Silicon 최대 \`|E|\` [kV/cm] | 535.64 | 570.63 |
+| Net Doping 0 교차 깊이 [nm] | 약 162.7 | 약 166.7 |
+
+**2026-10-29 결정:** 공통 SDE Electrical Baseline을 바꾸지 않고, Triple-DNW + Triple-PW 및 공통 RTA 조건을 **B 공정 개선용 출발 Recipe(P0)** 로 고정한다. 이는 **추가 Baseline-fitting을 멈추는 결정**이지 완전 전기적 동등성, 15.6 V SCR 정합, ATP/PEB/DCR 개선을 입증한 것이 아니다. Quadruple-DNW 확장은 사용하지 않는다.
