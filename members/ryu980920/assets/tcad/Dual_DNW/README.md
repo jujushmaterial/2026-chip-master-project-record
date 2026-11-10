@@ -24,13 +24,13 @@
 
 이 결과를 바탕으로 DNW를 두 개의 phosphorus implant로 분리하였다.
 
-### Fixed/Main DNW
+### 주 DNW 주입 (Fixed/Main)
 
 - Energy: `DNW_E`
 - Dose fraction: `DNW_FIXED_FRAC = 1 - DNW_TRIM_FRAC`
 - 역할: DNW main body와 약 1 um 부근의 main peak 형성
 
-### Trim/Assist DNW
+### 얕은 보정 DNW 주입 (Trim/Assist)
 
 - Energy: `DNW_TRIM_E`
 - Dose fraction: `DNW_TRIM_FRAC`
@@ -74,7 +74,7 @@ restart TDR load
 SVisualPy profile screening
 ```
 
-### Stage 1
+### 1단계
 
 파일:
 
@@ -105,7 +105,7 @@ struct tdr=n@node@_STI_RESTART restart
 
 Stage 1에는 DOE SWB Parameter가 없다. Workbench graph에서 Stage 1은 DOE branching 앞에서 **한 번만 실행**되어야 한다.
 
-### Stage 2
+### 2단계
 
 파일:
 
@@ -145,7 +145,7 @@ Stage 2에는 다음 공정이 의도적으로 존재하지 않는다.
 
 ---
 
-## 4. 현재 SWB Parameter
+## 4. 현재 SWB 입력 파라미터
 
 Stage 2에서 사용하는 SWB Parameter는 다음 10개이다.
 
@@ -162,7 +162,7 @@ RTA_T
 RTA_t
 ```
 
-### DNW derived values
+### DNW 종속 계산값
 
 ```tcl
 set DNW_FIXED_FRAC [expr 1.0-$DNW_TRIM_FRAC]
@@ -170,7 +170,7 @@ set DNW_FIXED_DOSE [expr $DNW_DOSE*$DNW_FIXED_FRAC]
 set DNW_TRIM_DOSE  [expr $DNW_DOSE*$DNW_TRIM_FRAC]
 ```
 
-### PW derived values
+### PW 종속 계산값
 
 `PW_FIXED_FRAC`는 SWB Parameter가 아니다.
 
@@ -184,11 +184,11 @@ set PW_TRIM_DOSE  [expr $PW_TOTAL_DOSE*$PW_TRIM_FRAC]
 
 ---
 
-## 5. 현재 Dual-DNW calibration 설계
+## 5. 현재 Dual-DNW 보정 실험 설계
 
 현재 structured calibration의 intended design은 다음과 같다.
 
-### Sweep
+### 탐색 변수 및 범위
 
 ```text
 DNW_DOSE      = 2.60e13 / 2.80e13 / 3.00e13 cm^-2
@@ -204,7 +204,7 @@ PW_TRIM_FRAC  = 0.500 / 0.525
 3 x 2 x 2 x 4 x 2 = 96 cases
 ```
 
-### 이번 calibration에서 고정
+### 이번 보정에서 고정하는 조건
 
 ```text
 PW_TRIM_E     = 85 keV
@@ -224,7 +224,7 @@ RTA_t         = 30 s
 
 Stage 2는 profile-first screening을 위해 TDR 대신 PLX를 중심으로 출력한다.
 
-### Before common WELL RTA
+### 공통 WELL RTA 이전
 
 ```text
 n@node@_B_R_r0.plx
@@ -232,7 +232,7 @@ n@node@_B_R_r4p6.plx
 n@node@_B_R_r13.plx
 ```
 
-### After common WELL RTA
+### 공통 WELL RTA 이후
 
 ```text
 n@node@_A_R_r0.plx
@@ -240,7 +240,7 @@ n@node@_A_R_r4p6.plx
 n@node@_A_R_r13.plx
 ```
 
-### Final process
+### 최종 공정 단계
 
 ```text
 n@node@_F_r0.plx
@@ -260,7 +260,7 @@ Dual-DNW calibration의 primary score는 **post-RTA `A_R_r4p6` profile**을 기�
 
 ---
 
-## 7. SVisualPy profile screening
+## 7. SVisualPy 프로파일 선별 평가
 
 파일:
 
@@ -270,7 +270,7 @@ CMP_SPAD_DualDNW_ProfileScreening_SVisualPy_v0.3_SDEAnchorFix.py
 
 SVisualPy는 SProcess PLX와 SDE surrogate baseline target을 비교한다.
 
-### PLX paired-variable compatibility
+### PLX 변수 쌍 호환성
 
 현재 Sentaurus Visual에서 `WritePlx` 결과가 공통 `X / BActive / PActive` 형태가 아니라 다음과 같이 curve별 x/y pair로 노출될 수 있음을 확인하였다.
 
@@ -313,7 +313,7 @@ v0.2 loader는 두 형식을 모두 지원한다. paired layout에서는 `BActiv
 
 surface/global maximum은 상세 metric에 별도로 보존한다.
 
-### Two-lobe detection
+### 두 개 피크 영역 탐지
 
 Dual-energy implant가 넓은 single profile이 아니라 두 개의 분리된 peak를 만들 수 있으므로 PW와 DNW 모두 second peak와 valley를 분석한다.
 
@@ -321,7 +321,7 @@ Dual-energy implant가 넓은 single profile이 아니라 두 개의 분리된 p
 
 ---
 
-## 8. Composite SCORE
+## 8. 복합 평가 점수(SCORE)
 
 `SCORE`는 percent error가 아니다.
 
@@ -368,7 +368,7 @@ Split penalty          5 %
 
 ---
 
-## 9. SDE comparison targets
+## 9. SDE 비교 기준값
 
 현재 SVisualPy에서 사용하는 target은 다음과 같다.
 
@@ -388,7 +388,7 @@ Split penalty          5 %
 
 ---
 
-## 10. Candidate selection 이후 flow
+## 10. 후보 선정 이후 진행 절차
 
 Dual-DNW profile screening은 최종 electrical equivalence를 보장하지 않는다.
 
@@ -441,7 +441,7 @@ Dual_DNW/
 이 폴더에서는 위 split/restart v0.2 SProcess flow를 현재 기준으로 사용한다.
 
 
-### SVisualPy v0.3 SDE anchor correction
+### SVisualPy v0.3의 SDE 기준값 보정
 
 - `PW_PK_R` uses the extracted SDE PW peak anchor `5.954e17 cm^-3`.
 - `DNW_PK_R` uses the extracted SDE DNW peak anchor `3.147e17 cm^-3`.

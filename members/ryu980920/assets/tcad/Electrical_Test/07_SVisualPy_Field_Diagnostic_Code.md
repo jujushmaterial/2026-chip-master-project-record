@@ -1,4 +1,4 @@
-# 07 SVisualPy Field Diagnostic — paste full code
+# 07 SVisualPy 전계 진단 — 전체 코드 복사용
 
 # Electrical_Test 07 — SVisualPy 15.0 V 전계·Avalanche 비교 진단
 
@@ -7,12 +7,12 @@
 
 ```python
 #setdep @node|sdevice@
-# CMP SPAD | independent 15.0 V SDE-vs-SProcess field diagnostic, v1.0
-# Pure diagnostic: leaves 06_SVisualPy_VBD_SCR.py and SDevice Physics unchanged.
-# Intended SWB node: a NEW SVisualPy after the same SDevice as node 06.
-# Required SDE source: a copy named SDE_baseline_V150_des.tdr in this run
-# directory; or absolute filename in environment CMP_SPAD_SDE_V150_TDR.
-# Workbench registered process parameters are NEVER changed here.
+# CMP SPAD | SDE·SProcess의 15.0 V 전계 비교를 위한 독립 진단 v1.0
+# 진단 전용 코드이며 06_SVisualPy_VBD_SCR.py와 SDevice 물리 모델은 변경하지 않는다.
+# SWB에서는 06번 노드와 같은 SDevice에 연결된 별도 SVisualPy 진단 노드에 사용한다.
+# SDE 입력은 실행 폴더에 SDE_baseline_V150_des.tdr 이름으로 복사한 파일을
+# 사용하거나 환경변수 CMP_SPAD_SDE_V150_TDR에 절대경로를 지정한다.
+# Workbench에 등록된 공정 Parameter는 여기서 변경하지 않는다.
 
 import csv
 import fnmatch
@@ -28,8 +28,8 @@ PROC_TDR = f"n{DEVICE_NODE}_V150_des.tdr"
 SDE_TDR = os.environ.get("CMP_SPAD_SDE_V150_TDR", "SDE_baseline_V150_des.tdr")
 PREFIX = f"n{VIS_NODE}_field15"
 
-# Published static-freeze reference coordinate definitions (um).
-# Raw Y is NOT directly comparable between SProcess and SDE.
+# 공식적으로 고정한 SDE 좌표계 정의(단위 µm).
+# SProcess와 SDE의 원본 Y 좌표는 그대로 비교하면 안 된다.
 INTERFACE_PROC_Y_UM = 0.300
 INTERFACE_SDE_Y_UM = 0.000
 BIAS_V = 15.0
@@ -37,7 +37,7 @@ RADII_UM = [4.6875, 12.5, 16.0, 17.0, 18.0]
 DEPTH_MIN_UM = 0.0
 DEPTH_MAX_UM = 1.30
 DEPTH_STEP_UM = 0.005
-# Do not interpolate across large gaps where cutline crosses oxide/STI.
+# Cutline이 산화막/STI를 통과할 때 큰 빈 구간을 가로질러 보간하지 않는다.
 MAX_BRACKET_GAP_UM = 0.12
 
 
@@ -55,7 +55,7 @@ def data(dataset, name):
 
 
 def field_magnitude(dataset):
-    # Same scalar preferences as the static-freeze SVisualPy script.
+    # 고정 기준 SVisualPy 코드와 동일한 스칼라 변수 선택 우선순위를 사용한다.
     scalar = choose_variable(dataset, ["AbsElectricField", "Abs(ElectricField-V)", "ElectricField"])
     if scalar is not None:
         values = data(dataset, scalar)
@@ -73,7 +73,7 @@ def silicon_cut(source, label, radius, interface_y):
     try:
         cut = sv.create_cutline("x", at=radius, dataset=source, materials=["Silicon"], name=cname)
     except TypeError:
-        # Older SVisualPy argument conventions: same fallback as baseline.
+        # 구형 SVisualPy 인자 형식이 적용될 때 기준 코드와 동일한 대체 호출을 사용한다.
         cut = sv.create_cutline("x", at=radius, dataset=source, name=cname)
 
     yname = choose_variable(cut, ["Y", "y"])
@@ -91,7 +91,7 @@ def silicon_cut(source, label, radius, interface_y):
     z, e, aval = z[valid], e[valid], aval[valid]
     order = np.argsort(z, kind="mergesort")
     z, e, aval = z[order], e[order], aval[order]
-    # Merge repeated mesh coordinates; missing Avalanche remains NaN.
+    # 중복 Mesh 좌표를 통합하며 누락된 Avalanche 값은 NaN으로 유지한다.
     if z.size:
         unique_z, inverse = np.unique(z, return_inverse=True)
         ne = np.bincount(inverse, weights=e)
@@ -114,7 +114,7 @@ def interpolate_without_large_gaps(x, y, grid):
     if x.size < 2:
         return result
     indices = np.searchsorted(x, grid, side="left")
-    # Exact coordinate hits are valid even at the boundary.
+    # 경계에 정확히 일치하는 좌표도 유효한 값으로 처리한다.
     exact = (indices < len(x)) & (x[np.minimum(indices, len(x)-1)] == grid)
     result[exact] = y[indices[exact]]
     indices = np.searchsorted(x, grid, side="right")
@@ -151,7 +151,7 @@ def valid_peak(grid, arr):
 
 
 def svg_plot(path, title, xlabel, ylabel, x, series):
-    # Zero dependency plotting. Each curve is clipped at missing/NaN data gaps.
+    # 추가 의존성 없는 그래프를 생성하며 결측/NaN 구간에서 곡선을 끊어 표시한다.
     W, H, l, r, top, bottom = 900, 520, 88, 25, 57, 70
     series = [(name, color, np.asarray(y, dtype=float)) for name, color, y in series]
     all_y = np.concatenate([y[np.isfinite(y)] for _, _, y in series])
@@ -180,7 +180,7 @@ def svg_plot(path, title, xlabel, ylabel, x, series):
     parts += [f'<text x="{W/2}" y="{H-14}" font-family="Arial" font-size="13" text-anchor="middle">{escape(xlabel)}</text>',
               f'<text x="18" y="{H/2}" font-family="Arial" font-size="13" transform="rotate(-90 18 {H/2})" text-anchor="middle">{escape(ylabel)}</text>']
     for i, (name, color, y) in enumerate(series):
-        # Separate paths for disconnected Silicon cutline segments.
+        # 서로 분리된 Si Cutline 구간은 별도 경로로 처리한다.
         run=[]
         def flush_run():
             if len(run)>1:
@@ -205,7 +205,7 @@ def try_global_silicon_max(dataset):
     function = getattr(sv, "calculate_field_value", None)
     if field is None or not callable(function):
         return None, "2D scalar |E| or calculate_field_value not exposed"
-    # The Python wrapper signature differs among SVisual releases.
+    # SVisual 버전마다 Python Wrapper 함수 인자 형식이 다를 수 있다.
     variants = [
         {"max": True, "dataset": dataset, "field": field, "materials": ["Silicon"]},
         {"maximum": True, "dataset": dataset, "field": field, "materials": ["Silicon"]},
@@ -269,8 +269,8 @@ for radius in RADII_UM:
                 [("SProcess", "#2676d1", pe/1000.0), ("SDE", "#d46c18", se/1000.0)]):
         files_generated.append(outsvg)
     if np.any(np.isfinite(pa)) or np.any(np.isfinite(sa)):
-        # Same signed log1p transform on each dataset; use only nonnegative
-        # generation (negative numerical noise is clamped to 0).
+        # 각 Dataset에 동일한 부호 보존 log1p 변환을 적용하고 음수가 아닌
+        # 생성률만 사용한다(수치 오차로 발생한 음수 값은 0으로 처리).
         outsvg = f"{PREFIX}_r{label}_Avalanche.svg"
         ap = np.where(np.isfinite(pa), np.log10(1+np.maximum(pa, 0)), np.nan)
         a0 = np.where(np.isfinite(sa), np.log10(1+np.maximum(sa, 0)), np.nan)
@@ -297,8 +297,8 @@ with open(summary_csv, "w", newline="") as file:
     writer.writerows(summary)
 files_generated.append(summary_csv)
 
-# Try native 2D (entire Silicon) maximum; if Python API does not provide it,
-# do NOT mislabel a sample of five cutlines as an exact device-wide maximum.
+# 전체 Si 영역의 원래 2D 최대값을 시도한다. Python API가 지원하지 않으면
+# 5개 Cutline의 표본 최대값을 소자 전체의 정확한 최대값이라고 표기하지 않는다.
 global_proc, global_msg_proc = try_global_silicon_max("PROC15")
 global_sde, global_msg_sde = try_global_silicon_max("SDE15")
 logfile = PREFIX+"_audit.txt"

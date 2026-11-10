@@ -1,4 +1,4 @@
-# Triple-PW Stage 2 SProcess — 155 keV Deep 고정 / Mid 18조건
+# Triple-PW 2단계 SProcess — 심부 155 keV 고정 / 중간층 18조건
 
 ## 1. 목적과 현재 상태
 
@@ -21,7 +21,7 @@
 - 기존 SVisualPy v1.3.0에서 `#setdep @node|sprocess@`와 `n@node|sprocess@_F_r4p6.plx`를 사용한다.
 - 실제 SWB `sprocess_fps.cmd`가 여기 보존된 코드와 일치하는지 실행 전 확인한다.
 
-## 3. 고정조건 — SWB experiment row에 입력 [surrogate DOE assumption]
+## 3. 고정조건 — SWB 실험 행에 입력 [대체 DOE 가정]
 
 | 공정/조건 | 값 |
 |---|---|
@@ -35,7 +35,7 @@
 
 주의: 기존 Stage 2에 있던 **P+ contact activation spike 1050°C/1.5 s는 별도 후속 공정으로 보존**했다. 이는 DNW/PW별로 독립 anneal을 부여하는 것이 아니다. 모든 **등록 SWB Parameter**는 코드에서 수치 하드코딩하지 않고 `@PARAMETER@`로 받는다. 고정값은 SWB experiment row로 고정한다.
 
-## 4. Input Parameter — 총 14개, CSV 열 순서
+## 4. 입력 파라미터 — 총 14개, CSV 열 순서
 
 기존 12개를 보존하고 맨 뒤에 2개만 추가한다.
 
@@ -58,7 +58,7 @@
 
 `PW_FIXED_FRAC`, `PW_MID_FRAC`는 **SWB Input Parameter가 아닌 계산 파생값**이다. 혼동 방지를 위해 `PW_TRIM_*` 명칭은 유지하되 이번 단계에서는 **Deep PW**를 지칭한다.
 
-## 5. Dose 계산 방식
+## 5. 주입량(Dose) 계산 방식
 
 ```text
 PW_TRIM_DOSE  = PW_TOTAL_DOSE * PW_TRIM_FRAC    # Deep PW
@@ -75,7 +75,7 @@ PW_MID_FRAC   = PW_MID_DOSE / PW_TOTAL_DOSE
 
 동일한 Fixed/Deep 절대 Dose를 유지하기 위해 Total과 fraction은 **Mid Dose에 따라 연동**한다. 별도로 SWB 값을 무작위 Cartesian sweep하면 관계가 깨질 수 있으므로 **실험 행별 pairing을 유지**한다. Code의 Fixed/Total 양수 검증도 적용된다.
 
-## 6. Mid 18조건 DOE — 9개씩 분할 [surrogate DOE assumption]
+## 6. 중간층 18조건 DOE — 9개씩 분할 [대체 DOE 가정]
 
 | Group | Mid Energy [keV] | Mid Dose [cm⁻²] | 조건 |
 |---|---|---|---:|
@@ -122,7 +122,7 @@ PW_MID_FRAC   = PW_MID_DOSE / PW_TOTAL_DOSE
 - **SPLIT_OK=1은 두 번째 피크가 모두 사라졌다는 의미가 아니다.** 지표는 SVisualPy의 잠정 surrogate criteria이다.
 - 462.6966588 nm는 SDE BActive/PActive 도핑 교차 anchor이며 실측 Junction 또는 SDevice SCR가 아니다.
 
-### 9.2 후속 고Energy·저Dose 18조건 (설계 완료 / 시뮬레이션 전)
+### 9.2 후속 고에너지·저주입량 18조건 (설계 완료 / 시뮬레이션 전)
 
 **의사결정:** 기존 SCORE의 Main Peak 항목이 좋은 후보라도 0~150 nm/약 0.5~0.65 µm의 SDE 오버랩 잔차가 남는다. 이번에는 Mid 분포를 깊게 이동시키고 Dose를 낮추는 방향을 실험하되, Main_R 감소는 별도 Shallow 보정 전까지 기록하여 추후 평가한다. 이것은 **개선이 검증된 결론이 아닌 실험 가설**이다.
 
@@ -147,9 +147,9 @@ PW_MID_FRAC   = PW_MID_DOSE / PW_TOTAL_DOSE
 
 ---
 
-## 10. 2026-10-23 고Energy·저Dose 결과와 ABC108 후속 DOE
+## 10. 2026-10-23 고에너지·저주입량 결과와 ABC108 후속 DOE
 
-### 10.1 고Energy·저Dose Mid 18조건 실행 결과
+### 10.1 고에너지·저주입량 중간층 18조건 실행 결과
 
 10월 21일 설계했던 **87.5~100 keV / Energy별 저Dose Mid 18조건**은 `1021A.csv`, `1021B.csv`로 결과를 회수하여 SVisualPy v1.3.0 및 SDE 오버랩을 검토했다. 이 절은 10월 21일 설계 당시의 §9.2 **'실행 전' 기록을 덮어쓰지 않는 후속 결과**이다.
 
@@ -166,7 +166,7 @@ PW_MID_FRAC   = PW_MID_DOSE / PW_TOTAL_DOSE
 - PLX 시각비교에서도 87.5 keV 후보가 90/95 keV 대비 Main–Mid 구간의 SDE 기준형상에 가까웠다. 따라서 **고Energy·저Dose에서 의도한 profile-shape 개선은 확인되지 않았고**, 저Energy·고Dose 및 다중 PW 주입 보정 방향으로 전환했다.
 - 0.5~0.65 µm 깊이의 부족 여부는 **원시 PLX의 구간별 오차 적분 전에는 확정하지 않는다**. SCORE는 전기적 소자 성능의 직접 척도가 아니다.
 
-### 10.2 PLX 직접비교에 따른 세 Implant 보정 방향
+### 10.2 PLX 직접 비교에 따른 세 Implant 보정 방향
 
 | 구간/변수 | 보정 방향 [surrogate DOE assumption] | 목표 및 제약 |
 |---|---|---|

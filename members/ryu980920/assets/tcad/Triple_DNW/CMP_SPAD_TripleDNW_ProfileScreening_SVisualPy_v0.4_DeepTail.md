@@ -1,18 +1,18 @@
-# CMP SPAD Triple-DNW Profile Screening SVisualPy v0.4
+# CMP SPAD Triple-DNW 도핑 프로파일 선별용 SVisualPy v0.4
 
 ```python
 #setdep @node|sprocess@
-# CMP SPAD Triple-DNW profile screening v0.4
-# Change from Dual-DNW v0.3:
-# - Keeps the existing PW/DNW profile-matching SCORE unchanged so Dual-DNW
-#   and Triple-DNW scores remain directly comparable.
-# - Extends DNW deep-tail sampling to 1.6 um and 1.8 um.
-# - Adds deep-tail log-RMSE over 1.2-1.8 um.
-# - Adds tail ratios at 1.4/1.6/1.8 um relative to the current SDE analytic
-#   DNW target. These are diagnostic metrics and are NOT added to SCORE.
-# - P462_R and peak-ratio denominators continue to use extracted SDE anchors.
-# - Analytic Gaussian is still retained ONLY for profile-shape / slope /
-#   deep-tail reference until the full SDE reference PLX is wired in.
+# CMP SPAD Triple-DNW 프로파일 선별 분석 v0.4
+# Dual-DNW v0.3 대비 변경사항:
+# - 기존 PW/DNW 프로파일 정합 SCORE를 유지하여 Dual-DNW와
+#   Triple-DNW의 점수를 같은 기준으로 비교할 수 있다.
+# - DNW 심부 Tail 표본 깊이를 1.6 µm 및 1.8 µm까지 확장한다.
+# - 1.2~1.8 µm 영역의 심부 Tail Log RMSE를 추가한다.
+# - 현재 SDE 해석 도핑 기준에 대해 1.4/1.6/1.8 µm의 Tail 비율을
+#   추가한다. 진단 지표이며 SCORE 계산에는 포함하지 않는다.
+# - P462_R 및 피크 비율의 분모는 기존에 추출한 SDE 기준값을 사용한다.
+# - 전체 SDE 기준 PLX를 연결하기 전까지 해석적 Gaussian은 도핑 형상·기울기·
+#   심부 Tail의 비교 기준으로만 사용한다.
 import os
 import fnmatch
 import numpy as np
@@ -28,8 +28,8 @@ METRICS_FILE = f"{PREFIX}_metrics.txt"
 AR_CSV = f"{PREFIX}_AR_compare.csv"
 F_CSV  = f"{PREFIX}_F_compare.csv"
 
-# SDE baseline anchors extracted from the frozen SDE reference
-# [project baseline / PLX extraction]
+# 고정된 SDE 기준 구조에서 추출한 SDE 기준값
+# [프로젝트 기준 / PLX 추출값]
 SDE_PW_RP_UM = 0.1093
 SDE_PW_PEAK = 5.954e17
 SDE_PW_SIGMA_UM = 0.2000
@@ -38,7 +38,7 @@ SDE_DNW_RP_UM = 1.0173
 SDE_DNW_PEAK = 3.147e17
 SDE_DNW_SIGMA_UM = 0.3806
 
-# Frozen SDE PW/DNW crossing anchor
+# 고정된 SDE PW/DNW 도핑 교차 기준값
 SDE_CROSS_UM = 0.4626966588130754
 SDE_CROSS_CONC_CM3 = 1.159e17
 
@@ -58,7 +58,7 @@ DNW_SPLIT_MIN_SEP_UM = 0.08
 PW_SAMPLE_NM = [100, 200, 250, 300, 400, 450, 500]
 DNW_SAMPLE_NM = [450, 500, 600, 800, 1000, 1200, 1400, 1600, 1800]
 
-# Composite SCORE weights: lower is better, not percent error.
+# 복합 SCORE 가중치: 값이 낮을수록 좋으며 백분율 오차가 아니다.
 W_PW_RP = 0.05
 W_PW_PK = 0.04
 W_PW_SHAPE = 0.06
@@ -463,19 +463,19 @@ def load_plx(filename, dataset):
 
     print(f"PROFILE: {filename} variables = {names}")
 
-    # Sentaurus Visual can expose WritePlx data in either of two layouts.
+    # Sentaurus Visual은 WritePlx 결과를 두 가지 형식으로 제공할 수 있다.
     #
-    # Layout A:
+    # 형식 A:
     #   X, BActive, PActive
     #
-    # Layout B:
+    # 형식 B:
     #   BActive x, BActive y
     #   PActive x, PActive y
     #
-    # The current PLX is being exposed as Layout B.
-    # In that case:
-    #   "* x" = profile coordinate
-    #   "* y" = concentration value
+    # 현재 PLX는 형식 B로 제공되고 있다.
+    # 이 경우:
+    #   "* x" = 프로파일 좌표
+    #   "* y" = 도핑 농도
 
     common_x = _pick_exact(names, ["X", "x", "Depth", "Position"])
     if common_x is None:
@@ -614,9 +614,9 @@ def analyze_profile(x, b, p):
         x, p, sde_dnw, DNW_WINDOW[0], DNW_WINDOW[1]
     )
 
-    # Deep-tail diagnostic.
-    # This uses the same current analytic SDE DNW reference that is already
-    # used for shape/slope scoring. It is NOT included in SCORE.
+    # 심부 Tail 진단.
+    # 도핑 형상·기울기 점수에 사용하는 기존 SDE 해석적 DNW 기준값을
+    # 그대로 사용하며 SCORE에는 포함하지 않는다.
     dnw_deep_tail_err = log_rmse(
         x, p, sde_dnw,
         DNW_DEEP_TAIL_WINDOW[0],
@@ -626,8 +626,8 @@ def analyze_profile(x, b, p):
     dnw_slope = log_slope(
         x, p, DNW_SLOPE_WINDOW[0], DNW_SLOPE_WINDOW[1]
     )
-    # NOTE: slope reference still comes from the analytic Gaussian target.
-    # Replace with the full SDE PLX profile when that reference file is wired in.
+    # 주의: 기울기 기준은 여전히 해석적 Gaussian 목표값에서 가져온다.
+    # 추후 전체 SDE PLX를 연결하면 해당 기준 프로파일로 대체한다.
     sde_dnw_slope = log_slope(
         x, sde_dnw, DNW_SLOPE_WINDOW[0], DNW_SLOPE_WINDOW[1]
     )
@@ -636,9 +636,9 @@ def analyze_profile(x, b, p):
     b_at_sde_cross = interp(x, b, SDE_CROSS_UM)
     p_at_sde_cross = interp(x, p, SDE_CROSS_UM)
 
-    # At the frozen SDE crossing, BActive = PActive by definition.
-    # Use the extracted SDE crossing concentration directly.
-    # Do NOT reconstruct this denominator from the analytic Gaussian.
+    # 고정된 SDE 교차점에서는 정의에 따라 BActive와 PActive가 같다.
+    # SDE에서 추출한 교차점 농도를 그대로 사용한다.
+    # 이 분모를 해석적 Gaussian으로 다시 계산하지 않는다.
     sde_b_at_cross = SDE_CROSS_CONC_CM3
     sde_p_at_cross = SDE_CROSS_CONC_CM3
 
@@ -707,7 +707,7 @@ def analyze_profile(x, b, p):
     )
 
     out = {
-        # Short DOE summary values
+        # DOE 결과 요약값
         "SCORE": score,
         "PW_RP": pw_x * 1000.0,
         "PW_PK_R": pw_pk_r,
@@ -723,7 +723,7 @@ def analyze_profile(x, b, p):
         "TAIL18_R": np.nan,
         "TAIL_RMSE": dnw_deep_tail_err,
 
-        # Detailed PW values
+        # PW 상세 지표
         "PW_peak_depth_nm": pw_x * 1000.0,
         "PW_peak_cm3": pw_peak,
         "PW_global_peak_depth_nm": pw_global_x * 1000.0,
@@ -744,7 +744,7 @@ def analyze_profile(x, b, p):
         "PW_split_valley_ratio": pw_split["valley_ratio"],
         "PW_split_severity": pw_split["severity"],
 
-        # Detailed DNW values
+        # DNW 상세 지표
         "DNW_peak_depth_nm": dnw_x * 1000.0,
         "DNW_peak_cm3": dnw_peak,
         "DNW_peak_ratio": dnw_pk_r,
@@ -767,7 +767,7 @@ def analyze_profile(x, b, p):
         "DNW_split_valley_ratio": dnw_split["valley_ratio"],
         "DNW_split_severity": dnw_split["severity"],
 
-        # Junction/tail values
+        # 접합 및 Tail 지표
         "SDE_target_crossing_nm": SDE_CROSS_UM * 1000.0,
         "SDE_target_crossing_concentration_cm3": SDE_CROSS_CONC_CM3,
         "PW_DNW_crossing_nm": cross * 1000.0,
@@ -782,7 +782,7 @@ def analyze_profile(x, b, p):
         "SDE_DNW_junction_side_log_slope": sde_dnw_slope,
         "DNW_junction_side_slope_ratio": slope_r,
 
-        # SCORE components
+        # SCORE 구성 지표
         "SCORE_P_PW_RP": p_pw_rp,
         "SCORE_P_PW_PK": p_pw_pk,
         "SCORE_P_PW_SHAPE": p_pw_shape,
@@ -934,7 +934,7 @@ with open(METRICS_FILE, "w") as fh:
         for key in sorted(m_f.keys()):
             write_metric(fh, f"F_{key}", m_f[key])
 
-    # Fourteen values are exposed to the SWB DOE table.
+    # SWB DOE 표에 14개 결과값을 출력한다.
     fh.write("\n[DOE_SUMMARY]\n")
     for key in [
         "SCORE",

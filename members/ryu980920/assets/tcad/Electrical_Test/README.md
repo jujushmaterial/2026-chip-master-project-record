@@ -1,44 +1,45 @@
-# Electrical_Test — Dynamic VBD/SCR/ATP/Dark Workbench (2026-11-10)
+# Electrical_Test — VBD 기반 동적 SCR·ATP·암전류 평가 (2026-11-10)
 
-> **Current active workflow:** This 6-node electrical configuration supersedes the fixed-15.6V SCR extraction below. Older logs and 07 Field Diagnostic remain historical references. Original 05/06 are retained in git history.
+> **현재 적용하는 구성:** 전기 노드 6개(SDevice 3개, SVisualPy 3개)를 순서대로 배치한다. 아래 과거의 15.6 V 고정 SCR 추출 방식은 현재 방식으로 대체되었다. 기존 기록과 07 전계 진단은 과거 참고자료로 남기며, 05·06번 덱의 이전 버전은 Git 이력에 보존되어 있다.
 
-## 연구 가설 (2026-11-10)
+## 2026년 11월 10일 연구 가설
 
-- [2026-11-10 연구일지 — 가설 H1/H2](../../../timeline/2026-11/2026-11-10.md): DNW 심부·저농도화 및 Trim DNW Mask 선택적 축소. **가설 수립 단계이며, DOE 및 기존 공정 덱은 변경하지 않음.**
+- [11월 10일 실험 로그 — H1·H2 가설 수립](../../../timeline/2026-11/2026-11-10.md): H1은 DNW 심부 이동·저농도화, H2는 Trim DNW 마스크 선택적 축소. 아직 가설 수립 단계이며 기존 공정 덱과 DOE는 변경하지 않았다.
 
-## SWB Tool chain (strict linear layout)
+## SWB 노드 배치 및 연결
 
 **SProcess1 → SProcess2 → SNMesh1 → SNMesh2 → SDevice1 → SVisualPy1 → SDevice2 → SVisualPy2 → SDevice3 → SVisualPy3**
 
-| Tool | File | Input/Output |
+| 노드 | 입력 덱 | 입력과 출력 |
 |---|---|---|
-| SDevice1 | [05_SDevice_VBD_SCR.cmd](05_SDevice_VBD_SCR.cmd) | Previous SNMesh2 (`@node|-1@`), ionization-integral VBD only |
-| SVisualPy1 | [06_SVisualPy_VBD_SCR.py](06_SVisualPy_VBD_SCR.py) | Previous SDevice1 (`@node|-1@`) PLT; emits `DOE: VBD_V`, `SCR_BIAS_V`, `ATP_BIAS_V` |
-| SDevice2 | [07_SDevice2_Dynamic_SCR_ATP.cmd](07_SDevice2_Dynamic_SCR_ATP.cmd) | SNMesh2 (`@node|-3@`) Mesh, two extracted target biases; `n<node>_SCR_des.tdr`, `n<node>_ATP_des.tdr` |
-| SVisualPy2 | [08_SVisualPy2_Dynamic_SCR_ATP.py](08_SVisualPy2_Dynamic_SCR_ATP.py) | Previous SDevice2: SCR center/width and sampled 101-cut ATP map |
-| SDevice3 | [09_SDevice3_DarkCurrent.cmd](09_SDevice3_DarkCurrent.cmd) | SNMesh2 (`@node|-5@`) Mesh; feedback-ON dark I–V to `SCR_BIAS_V` |
-| SVisualPy3 | [10_SVisualPy3_DarkCurrent.py](10_SVisualPy3_DarkCurrent.py) | Previous SDevice3 PLT; SDevice1 diagnostic PLT at `@node|-5@` |
+| SDevice1 | [05_SDevice_VBD_SCR.cmd](05_SDevice_VBD_SCR.cmd) | SNMesh2(`@node|-1@`) Mesh에서 Ionization Integral로 VBD 계산 |
+| SVisualPy1 | [06_SVisualPy_VBD_SCR.py](06_SVisualPy_VBD_SCR.py) | SDevice1(`@node|-1@`) PLT에서 `DOE: VBD_V`, `SCR_BIAS_V`, `ATP_BIAS_V` 추출 |
+| SDevice2 | [07_SDevice2_Dynamic_SCR_ATP.cmd](07_SDevice2_Dynamic_SCR_ATP.cmd) | SNMesh2(`@node|-3@`) Mesh에서 두 추출 전압을 평가하여 `n<node>_SCR_des.tdr`, `n<node>_ATP_des.tdr` 생성 |
+| SVisualPy2 | [08_SVisualPy2_Dynamic_SCR_ATP.py](08_SVisualPy2_Dynamic_SCR_ATP.py) | 직전 SDevice2의 두 TDR에서 SCR 중심·폭 및 반경 방향 101개 Cutline ATP Map 추출 |
+| SDevice3 | [09_SDevice3_DarkCurrent.cmd](09_SDevice3_DarkCurrent.cmd) | SNMesh2(`@node|-5@`) Mesh와 `SCR_BIAS_V`를 사용해 Feedback 활성화 암전류 I–V 계산 |
+| SVisualPy3 | [10_SVisualPy3_DarkCurrent.py](10_SVisualPy3_DarkCurrent.py) | SDevice3 PLT와 SDevice1(`@node|-5@`)의 진단 PLT를 읽어 암전류 지표 추출 |
 
-**Important:** The relative `@node|-3@` / `@node|-5@` references are correct only in the exact sequence above. Changing the ordering requires updating those references. The SDevice nodes do not read SVisualPy output as their Grid.
+**상대 노드 참조 주의:** `@node|-3@`, `@node|-5@`는 위 순서에서만 정확하다. 노드를 삽입하거나 순서를 바꾸면 참조를 다시 확인해야 한다. SDevice2와 SDevice3는 직전 SVisualPy가 아닌 **SNMesh2 Mesh**를 입력받는다.
 
-## Dynamic extracted-variable behavior
+## VBD 추출값으로 평가전압 자동 전달
 
-- `SCR_BIAS_V = VBD_V - 0.197998` V (same margin below breakdown as reference SDE at 15.6 V). SCR center target 180.202946 nm.
-- `ATP_BIAS_V = VBD_V + 1.202002` V (same excess as the official SDE VBD≈15.797998 V at 17.0 V). The prior B-side ATP diagnostic VBD was different; re-run the SDE reference using this unified ATP Physics before comparing absolute ATP values.
-- SVisualPy1 declares these three with `#set ... -1` for Workbench preprocessing and overwrites them by **runtime `DOE:` outputs**. They are SWB extracted variables, not registered process DOE input parameters. Existing 14 SProcess2 `@PARAMETER@` connections are untouched.
-- SDevice2 explicitly ramps to the **two exported numerical voltages** and saves goal-state plots labeled `_SCR` / `_ATP`. These filenames do not encode a fixed bias. SVisualPy2 reads exactly these two files.
-- SDevice2 uses the same base avalanche model as SDevice1 with `AvalPostProcessing`, adds `BreakdownProbability`, and intentionally omits `BreakAtIonIntegral` so the ATP-bias step can complete.
-- SDevice3 uses the older calibrated-as-surrogate SRH/Hurkx, BTBT/Hurkx, and avalanche-feedback-on dark model. It stops below its VBD at `SCR_BIAS_V`; 15.6 V dark-current output is NA when outside the sweep, not a test failure.
+- `SCR_BIAS_V = VBD_V − 0.197998` V: 공통 SDE 기준 VBD와 15.6 V의 차이를 유지한다. SCR 중심 위치 목표는 약 180.202946 nm이다.
+- `ATP_BIAS_V = VBD_V + 1.202002` V: 공통 SDE VBD 약 15.797998 V와 17.0 V 사이의 Excess Bias를 유지한다. 과거 B측 ATP 진단 덱은 VBD 정의가 달랐으므로, ATP 절대값을 비교하기 전에 통일된 물리 설정으로 SDE 기준값을 재계산해야 한다.
+- SVisualPy1은 `#set ... -1`을 통해 SWB 추출 변수 초기값을 선언한 뒤 `DOE:` 숫자 출력으로 갱신한다. 공정 DOE 입력 Parameter를 새로 등록하지 않으며 SProcess2의 기존 14개 `@PARAMETER@` 연결은 유지한다.
+- SDevice2는 추출된 전압을 각각 `Goal`로 사용하고 도달한 상태를 `_SCR`, `_ATP` TDR로 저장한다. **파일명은 고정 전압을 의미하지 않는다.**
+- SDevice2는 SDevice1과 기본 Avalanche 모델을 공유하며 `AvalPostProcessing`, `BreakdownProbability`를 사용한다. 항복 이후 ATP 전압까지 진행하도록 `BreakAtIonIntegral`은 사용하지 않는다.
+- SDevice3는 기존 SRH/Hurkx·BTBT/Hurkx 및 Avalanche Feedback 활성화 모델을 유지한다. `SCR_BIAS_V`까지만 계산하므로 해당 범위 밖인 15.6 V 암전류 지표는 NA일 수 있다.
 
-**Preprocessing warning:** Workbench may use initial `-1` for extracted variables if you preprocess all downstream commands before running SVisualPy1. Execute the chain in dependency order, then check the actual `pp*_des.cmd` for resolved numerical SCR and ATP Goal voltages; preprocess downstream nodes again if necessary. Stop if any exported value is `x` or `-1`.
+**전처리 주의:** SVisualPy1 실행 전에 후속 덱을 한 번에 전처리하면 초기값 `-1`이 들어갈 수 있다. SVisualPy1 완료 이후 의존성 순서대로 후속 노드를 실행하고 전처리된 `pp*_des.cmd`에서 두 `Goal` 전압이 숫자로 치환되었는지 확인한다. 값이 `x` 또는 `-1`이면 후속 노드 실행을 중지하고 재전처리한다.
 
-## Static tests and actual run acceptance
+## 정적 검증과 실제 실행 통과 구분
 
-See [11_Dynamic_Workflow_Validation.md](11_Dynamic_Workflow_Validation.md). Static syntax/wiring checks can be performed outside Sentaurus, but **actual SWB run validation requires SProcess/SNMesh/SDevice/SVisualPy in the user's installation**. No TCAD execution is claimed by this commit.
+[11_Dynamic_Workflow_Validation.md](11_Dynamic_Workflow_Validation.md)에 덱 참조 및 실제 P0 검증 절차를 기록했다. 코드·참조 경로의 정적 확인만으로 실제 Sentaurus에서 정상 실행되었다고 주장하지 않는다.
 
 ---
 
-## Previous documentation (2026-10-26/29, historical)
+## 이전 문서 (2026-10-26/29, 과거 기록)
+
 
 # Electrical_Test — CMP SPAD 전기적 특성 검증 덱
 

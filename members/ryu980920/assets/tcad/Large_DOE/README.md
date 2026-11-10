@@ -1,10 +1,10 @@
-# Large_DOE
+# 대규모 DOE — PW/DNW 도핑 프로파일 탐색
 
 CMP SPAD B-track의 **surrogate baseline doping-profile calibration을 위한 대규모 SProcess DOE** 작업 폴더이다.
 
 현재 단계의 목적은 SDevice의 VBD/SCR을 먼저 맞추는 것이 아니라, SDE에서 정의한 baseline PW/DNW active doping profile을 SProcess에서 가능한 한 가깝게 재현할 수 있는 process region을 찾는 것이다. Profile screening으로 후보를 줄인 뒤, 선별된 후보만 SDevice에서 VBD 및 V156 SCR을 검증한다.
 
-## Files
+## 파일 구성
 
 ### `CMP_SPAD_BaselineImplementation_SProcess_v0.14_PLX_only_noTDR_nocomments.txt`
 
@@ -21,7 +21,7 @@ CMP SPAD B-track의 **surrogate baseline doping-profile calibration을 위한 �
 - 별도 DNW/PW anneal은 사용하지 않는다.
 - 이 버전은 TDR을 출력하지 않으므로 그대로 SDevice downstream input으로 사용할 수 없다. Profile 후보 선정 후 TDR-enabled verification flow로 다시 실행해야 한다.
 
-### PW fraction handling
+### PW 주입 비율 계산
 
 `PW_TRIM_FRAC`만 SWB parameter로 받고,
 
@@ -57,32 +57,32 @@ SProcess PLX를 읽어 SDE baseline target과 profile을 자동 비교하기 위
 
 ### PW
 
-- peak depth
-- peak concentration
-- bulk-side half-width/FWHM-related metric
-- second-peak ratio
+- 피크 깊이
+- 피크 농도
+- 벌크 방향 반치폭·FWHM 관련 지표
+- 두 번째 피크 비율
 - 100/200/250/300/400/450/500 nm concentration
-- integrated active dose
-- full-profile log RMSE
-- normalized shape log RMSE
+- 활성 도핑량 적분
+- 전체 프로파일 Log RMSE
+- 정규화 형상 Log RMSE
 
 ### DNW
 
-- peak depth
-- peak concentration
+- 피크 깊이
+- 피크 농도
 - FWHM
-- left/right half-max position
-- equivalent sigma
+- 피크 좌우 반치폭 위치
+- 등가 표준편차(σ)
 - 600/800/1000/1200/1400 nm concentration
-- integrated active dose
-- full-profile log RMSE
-- normalized shape log RMSE
+- 활성 도핑량 적분
+- 전체 프로파일 Log RMSE
+- 정규화 형상 Log RMSE
 
-### Joint PW/DNW
+### PW·DNW 공동 지표
 
-- BActive=PActive metallurgical crossing
-- target 대비 peak/crossing/sigma error
-- post-RTA와 final profile 변화
+- BActive=PActive 금속학적 접합 위치
+- 기준 대비 피크·접합·표준편차 오차
+- RTA 직후와 최종 프로파일 변화
 
 출력 파일:
 
@@ -92,7 +92,7 @@ SProcess PLX를 읽어 SDE baseline target과 profile을 자동 비교하기 위
 
 SVisual 내에서 SProcess BActive/PActive와 SDE target curve를 overlay하도록 구성되어 있다.
 
-## Current SDE target used by SVisualPy
+## SVisualPy에서 사용하는 현재 SDE 기준값
 
 현재 script에 들어간 profile target은 현재 SDE baseline profile에서 추출해 사용하는 project calibration target이다.
 
@@ -105,7 +105,7 @@ SVisual 내에서 SProcess BActive/PActive와 SDE target curve를 overlay하도�
 
 이 값들은 foundry implant recipe가 아니라 SDE baseline active-profile matching target으로 사용한다.
 
-## Recommended flow
+## 권장 실행 순서
 
 1. SWB에서 SProcess DOE를 실행한다.
 2. 각 case에서 PLX만 저장한다.
@@ -115,7 +115,7 @@ SVisual 내에서 SProcess BActive/PActive와 SDE target curve를 overlay하도�
 6. SDevice에서 VBD≈15.8 V 및 V156 SCR≈baseline을 검증한다.
 7. profile과 electrical equivalence를 함께 만족하는 surrogate baseline candidate를 freeze한다.
 
-## Important interpretation notes
+## 결과 해석 시 주의 사항
 
 - metallurgical junction(BActive=PActive)은 SCR center가 아니다.
 - profile peak/Rp 하나만 맞는 것을 baseline reproduction 성공으로 판단하지 않는다.
@@ -123,11 +123,11 @@ SVisual 내에서 SProcess BActive/PActive와 SDE target curve를 overlay하도�
 - RTA 변화가 VBD/SCR에 미치는 영향이 작게 보인 기존 결과는 있었지만, **RTA 조건별 PLX profile sensitivity를 정량 비교해 low-sensitivity라고 확정한 상태는 아니다.** 따라서 RTA profile sensitivity는 아직 검증 항목이다.
 - SVisualPy의 SDE target 수치는 현재 project baseline calibration용 값이며 실제 ST foundry process parameter로 주장하지 않는다.
 
-## Status
+## 진행 상태
 
-- SProcess PLX-only/no-TDR command: 작성 완료
-- PW fraction `1-x` 자동화: 적용 완료
-- SVisualPy profile metric extractor: 작성 완료
+- PLX만 출력하는 SProcess 덱(TDR 미생성): 작성 완료
+- PW 비율 `1−x` 자동 계산: 적용 완료
+- SVisualPy 프로파일 지표 추출 코드: 작성 완료
 - 대규모 DOE 실험: 진행 중
 - RTA 조건별 PLX sensitivity 검증: 미완료
 - 최종 surrogate baseline freeze: 미완료

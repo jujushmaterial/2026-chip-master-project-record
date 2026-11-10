@@ -1,4 +1,4 @@
-# PW_Propile — PW-only SVisualPy (v1.0 / v1.2.1 / v1.3.0 보관)
+# PW_Propile — PW 단독 분석 SVisualPy (v1.0 / v1.2.1 / v1.3.0 보관)
 
 2026-10-12 CMP2에서 제작한 **PW 중심 profile-screening v1.0 원본**, 2026-10-15에 실제 27조건 분석에 사용한 **v1.2.1 CompactDOE**, 그리고 2026-10-19에 29조건 심층 Peak 분석에 사용한 **v1.3.0 PeakAudit**를 함께 보관한다. 폴더명 `PW_Propile`은 요청한 표기를 따른다. 이 작업은 공개 문헌 제약 기반 **surrogate baseline** 재현에 속하며, 실제 파운드리 레시피를 복원하거나 전기적 baseline을 확정한 결과가 아니다.
 
@@ -45,7 +45,7 @@ PW는 **Trim Energy 85/90/95 keV × Trim Fraction 0.500–0.700 (0.025 간격, 9
 
 SWB에 등록된 Parameter는 현재 sweep하지 않더라도 SProcess command에서 `@PARAMETER@`로 연결해야 한다. 기존 Stage 2에 `PW_FIXED_FRAC=1-PW_TRIM_FRAC` 계산이 존재하므로 실제 SWB에서 `PW_FIXED_FRAC`를 별도 등록했다면 코드와 등록 목록을 후속 점검해야 한다. 이 보관 작업에서는 SProcess를 변경하지 않는다.
 
-## 4. Target과 깊이 구간
+## 4. 목표값과 깊이 구간
 
 | 항목 | 기준 |
 |---|---|
@@ -60,7 +60,7 @@ SWB에 등록된 Parameter는 현재 sweep하지 않더라도 SProcess command�
 
 현재 전체 SDE PLX를 직접 읽지 않는다. PW Shape/Tail의 reference는 SDE peak anchor와 `sigma=200 nm`, 배경 1e15 cm^-3을 이용한 **analytic Gaussian surrogate**이다. 462.7 nm의 crossing 농도는 따로 추출한 SDE anchor라 Gaussian 참조곡선과 일치한다고 가정하지 않는다. Shallow/Tail은 최종 PW curve의 **깊이 구간**이지 implant별 농도 분해값이 아니다.
 
-## 5. PW-only SCORE (v1.0 원본)
+## 5. PW 단독 SCORE (v1.0 원본)
 
 ```text
 bounded(e) = e/(1+e), e>=0
@@ -156,7 +156,7 @@ SDE 원본 PLX 샘플을 코드에 포함했지만 이는 **SDE 기준 TCAD 프�
 - 참조 샘플은 코드에 내장하므로 별도 SDE PLX 파일 복사 불필요.
 - 실제 Sentaurus SWB의 27조건에서 **PW12_RUN_OK=1, 27/27**을 확인했다. 정상 계산과 분석 결과를 확인한 것이며 **SDevice VBD/SCR 검증은 아니다**.
 
-### SCORE 정의 [surrogate scoring assumption]
+### SCORE 정의 [대체 평가점수 가정]
 
 SCORE는 모든 세부 오차를 유한한 penalty로 바꾼 뒤 가중 합산한 **0~100 scale mismatch 점수**로, **낮을수록 좋다**. 절대 농도 정합률(%)과 동일시하지 않는다.
 
@@ -173,7 +173,7 @@ SCORE는 모든 세부 오차를 유한한 penalty로 바꾼 뒤 가중 합산�
 
 모든 구간 형상 오차, 정량 농도비, 점수의 각 기여도는 상세 파일에서 확인할 수 있다. 462.7 nm 기준점은 **SDE baseline의 BActive=PActive 도핑 crossover anchor**로 **SDevice SCR 중심이 아니다**. SPLIT_OK의 5% 경계와 ALL_OK의 잠정 관문(예: B462 비율 0.70~1.30)은 **논문 보고 기준이 아닌 내부 surrogate threshold**다.
 
-## 11. SWB Output Variables — **핵심 8개만 등록**
+## 11. SWB 출력 변수 — **핵심 8개만 등록**
 
 | SWB 변수 | 뜻 | 기준 |
 |---|---|---|
@@ -212,7 +212,7 @@ SCORE는 모든 세부 오차를 유한한 penalty로 바꾼 뒤 가중 합산�
 
 **해석:** 95 keV 쪽 주입 Dose fraction 증가로 B462를 늘릴 수 있었지만 **중간 Second Peak 및 Split도 심해짐**. 최대 B462도 SDE의 약 36%여서 Dual-PW의 현재 탐색범위에서는 동시 합격조건 없음. 따라서 **Shallow / Deep / 향후 Mid**를 역할 분리하는 방향으로 실험을 확장한다.
 
-## 13. 다음 연구 — Deep PW 9조건 선행 설계
+## 13. 다음 연구 — 심부 PW 9조건 선행 설계
 
 이번 DOE는 **Triple-PW를 계획한 후 Deep implant 기여를 먼저 분리 평가하기 위한 9개 입력 설계**다. **아직 Mid Implant를 추가하지 않았으므로 PW는 Fixed+Deep 두 개**이며 기존 SProcess 사용이 가능하다.
 
@@ -234,7 +234,7 @@ SCORE는 모든 세부 오차를 유한한 penalty로 바꾼 뒤 가중 합산�
 
 ---
 
-## 14. 2026-10-19 — v1.3.0 PeakAudit: Deep Peak를 놓치지 않는 최종 분석 버전
+## 14. 2026-10-19 — v1.3.0 PeakAudit: 심부 피크를 놓치지 않는 최종 분석 버전
 
 ### 원본 코드와 도입 이유
 
@@ -259,7 +259,7 @@ v1.2.1의 **PW12_MAIN_NM은 30~170 nm 범위 내 얕은 최대 농도의 깊이*
 
 Global Peak는 측정한 원본 PLX 샘플 범위의 최댓값이지 연속 수학곡선의 정밀 극대값을 보증하는 값은 아니다. Second Peak는 5 nm 보간 및 5-point smoothing에 따른 국소 피크이므로 두 Peak 위치가 몇 nm 다를 수 있다.
 
-### 14.2 SWB Output Variables
+### 14.2 SWB 출력 변수
 
 기존 **8개를 삭제하거나 이름을 변경하지 않는다.**
 

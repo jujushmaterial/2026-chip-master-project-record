@@ -16,19 +16,19 @@ Main DNW Energy를 높이면 깊은 영역의 농도가 일부 증가하지만, 
 
 Triple-DNW는 phosphorus implant를 다음 세 성분으로 나눈다.
 
-### Main DNW
+### 주 DNW 주입 (Main)
 
 - Energy: `DNW_E`
 - Dose fraction: `DNW_MAIN_FRAC = 1 - DNW_TRIM_FRAC - DNW_DEEP_FRAC`
 - 역할: 약 1 µm 부근 DNW main peak 및 profile body 형성
 
-### Trim/Assist DNW
+### 얕은 보정 DNW 주입 (Trim/Assist)
 
 - Energy: `DNW_TRIM_E`
 - Dose fraction: `DNW_TRIM_FRAC`
 - 역할: shallow/junction-side phosphorus contribution 보강
 
-### Deep DNW
+### 심부 DNW 주입 (Deep)
 
 - Energy: `DNW_DEEP_E`
 - Dose fraction: `DNW_DEEP_FRAC`
@@ -72,7 +72,7 @@ restart TDR load
 SVisualPy v0.4 profile screening
 ```
 
-### Stage 1
+### 1단계
 
 공통으로 재사용하는 파일:
 
@@ -94,7 +94,7 @@ n<node>_STI_RESTART_fps.tdr
 
 Stage 1은 DOE branching 앞에서 한 번만 수행한다. 이 폴더에는 동일한 Stage 1 복사본을 따로 보관하지 않는다.
 
-### Stage 2
+### 2단계
 
 파일:
 
@@ -114,7 +114,7 @@ Stage 1의 `n@node|sprocess1@_STI_RESTART_fps.tdr`를 확인한 뒤 `init tdr`�
 
 ---
 
-## 4. 현재 SWB Parameter
+## 4. 현재 SWB 입력 파라미터
 
 첨부된 Stage 2 command에서 `@PARAMETER@` 형식으로 입력받는 항목은 다음 12개다.
 
@@ -133,7 +133,7 @@ RTA_T
 RTA_t
 ```
 
-### DNW derived values
+### DNW 종속 계산값
 
 ```tcl
 set DNW_MAIN_FRAC [expr 1.0-$DNW_TRIM_FRAC-$DNW_DEEP_FRAC]
@@ -144,7 +144,7 @@ set DNW_DEEP_DOSE [expr $DNW_DOSE*$DNW_DEEP_FRAC]
 
 따라서 `DNW_MAIN_FRAC`은 두 분율에 의해 결정되는 종속변수다.
 
-### PW derived values
+### PW 종속 계산값
 
 첨부 Stage 2 command는 다음과 같이 계산한다.
 
@@ -158,7 +158,7 @@ set PW_TRIM_DOSE [expr $PW_TOTAL_DOSE*$PW_TRIM_FRAC]
 
 ---
 
-## 5. Triple-DNW calibration 설계
+## 5. Triple-DNW 보정 실험 설계
 
 ### 첫 Triple-DNW DOE
 
@@ -177,7 +177,7 @@ DNW_DOSE   = 2.50e13 ~ 2.90e13 cm^-2 (9 levels)
 
 첫 DOE에서는 Main absolute dose `1.80e13 cm^-2`와 Trim absolute dose `6.00e12 cm^-2`를 유지하면서 Deep absolute dose를 추가하는 방식으로 설계하였다. 실제 확보했던 결과 CSV는 23 + 22 = 45개 행이었다.
 
-### 후속 Main-to-Deep fine DOE
+### 후속 Main·Deep 정밀 DOE
 
 첫 DOE 분석 후, Deep Energy와 Main/Deep dose 분배 효과를 좁은 범위에서 분리해 확인하도록 설계한 25개 조건이다.
 
@@ -220,7 +220,7 @@ RTA_t         = 30 s
 
 Stage 2는 profile screening을 위해 PLX를 생성한다.
 
-### Before common WELL RTA
+### 공통 WELL RTA 이전
 
 ```text
 n@node@_B_R_r0.plx
@@ -228,7 +228,7 @@ n@node@_B_R_r4p6.plx
 n@node@_B_R_r13.plx
 ```
 
-### After common WELL RTA
+### 공통 WELL RTA 이후
 
 ```text
 n@node@_A_R_r0.plx
@@ -236,7 +236,7 @@ n@node@_A_R_r4p6.plx
 n@node@_A_R_r13.plx
 ```
 
-### Final process
+### 최종 공정 단계
 
 ```text
 n@node@_F_r0.plx
@@ -252,7 +252,7 @@ Primary SCORE와 DOE summary는 **post-RTA `A_R_r4p6` profile**을 기준으로 
 
 ---
 
-## 7. SVisualPy profile screening
+## 7. SVisualPy 프로파일 선별 평가
 
 파일:
 
@@ -264,7 +264,7 @@ Markdown 파일 내부의 `python` 코드 블록에 SVisualPy 코드가 보존�
 
 기존 Dual-DNW v0.3과 동일한 PW/DNW profile-matching SCORE 계산을 유지하면서, deep-tail 비교에 필요한 진단 지표 네 개를 추가하였다.
 
-### PLX paired-variable compatibility
+### PLX 변수 쌍 호환성
 
 기존 v0.3 loader와 동일하게 다음 형태를 모두 처리한다.
 
@@ -318,7 +318,7 @@ n<node>_profile_F_compare.csv
 
 ---
 
-## 8. Composite SCORE
+## 8. 복합 평가 점수(SCORE)
 
 Triple-DNW v0.4의 Composite SCORE 가중치와 산식은 Dual-DNW v0.3과 동일하다.
 
@@ -352,7 +352,7 @@ SCORE가 낮더라도 main peak, sigma, metallurgical crossing 및 deep-tail rat
 
 ---
 
-## 9. SDE comparison targets
+## 9. SDE 비교 기준값
 
 현재 v0.4 SVisualPy에 실제로 지정된 기준값이다.
 
@@ -378,7 +378,7 @@ SCORE가 낮더라도 main peak, sigma, metallurgical crossing 및 deep-tail rat
 
 ---
 
-## 10. Candidate selection 이후 flow
+## 10. 후보 선정 이후 진행 절차
 
 Triple-DNW profile-screening에서 우수한 조건을 찾았다고 해서 electrical baseline을 확보한 것은 아니다.
 
