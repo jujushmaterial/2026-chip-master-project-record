@@ -1,3 +1,41 @@
+# Electrical_Test — Dynamic VBD/SCR/ATP/Dark Workbench (2026-11-10)
+
+> **Current active workflow:** This 6-node electrical configuration supersedes the fixed-15.6V SCR extraction below. Older logs and 07 Field Diagnostic remain historical references. Original 05/06 are retained in git history.
+
+## SWB Tool chain (strict linear layout)
+
+**SProcess1 → SProcess2 → SNMesh1 → SNMesh2 → SDevice1 → SVisualPy1 → SDevice2 → SVisualPy2 → SDevice3 → SVisualPy3**
+
+| Tool | File | Input/Output |
+|---|---|---|
+| SDevice1 | [05_SDevice_VBD_SCR.cmd](05_SDevice_VBD_SCR.cmd) | Previous SNMesh2 (`@node|-1@`), ionization-integral VBD only |
+| SVisualPy1 | [06_SVisualPy_VBD_SCR.py](06_SVisualPy_VBD_SCR.py) | Previous SDevice1 (`@node|-1@`) PLT; emits `DOE: VBD_V`, `SCR_BIAS_V`, `ATP_BIAS_V` |
+| SDevice2 | [07_SDevice2_Dynamic_SCR_ATP.cmd](07_SDevice2_Dynamic_SCR_ATP.cmd) | SNMesh2 (`@node|-3@`) Mesh, two extracted target biases; `n<node>_SCR_des.tdr`, `n<node>_ATP_des.tdr` |
+| SVisualPy2 | [08_SVisualPy2_Dynamic_SCR_ATP.py](08_SVisualPy2_Dynamic_SCR_ATP.py) | Previous SDevice2: SCR center/width and sampled 101-cut ATP map |
+| SDevice3 | [09_SDevice3_DarkCurrent.cmd](09_SDevice3_DarkCurrent.cmd) | SNMesh2 (`@node|-5@`) Mesh; feedback-ON dark I–V to `SCR_BIAS_V` |
+| SVisualPy3 | [10_SVisualPy3_DarkCurrent.py](10_SVisualPy3_DarkCurrent.py) | Previous SDevice3 PLT; SDevice1 diagnostic PLT at `@node|-5@` |
+
+**Important:** The relative `@node|-3@` / `@node|-5@` references are correct only in the exact sequence above. Changing the ordering requires updating those references. The SDevice nodes do not read SVisualPy output as their Grid.
+
+## Dynamic extracted-variable behavior
+
+- `SCR_BIAS_V = VBD_V - 0.197998` V (same margin below breakdown as reference SDE at 15.6 V). SCR center target 180.202946 nm.
+- `ATP_BIAS_V = VBD_V + 1.202002` V (same excess as the official SDE VBD≈15.797998 V at 17.0 V). The prior B-side ATP diagnostic VBD was different; re-run the SDE reference using this unified ATP Physics before comparing absolute ATP values.
+- SVisualPy1 declares these three with `#set ... -1` for Workbench preprocessing and overwrites them by **runtime `DOE:` outputs**. They are SWB extracted variables, not registered process DOE input parameters. Existing 14 SProcess2 `@PARAMETER@` connections are untouched.
+- SDevice2 explicitly ramps to the **two exported numerical voltages** and saves goal-state plots labeled `_SCR` / `_ATP`. These filenames do not encode a fixed bias. SVisualPy2 reads exactly these two files.
+- SDevice2 uses the same base avalanche model as SDevice1 with `AvalPostProcessing`, adds `BreakdownProbability`, and intentionally omits `BreakAtIonIntegral` so the ATP-bias step can complete.
+- SDevice3 uses the older calibrated-as-surrogate SRH/Hurkx, BTBT/Hurkx, and avalanche-feedback-on dark model. It stops below its VBD at `SCR_BIAS_V`; 15.6 V dark-current output is NA when outside the sweep, not a test failure.
+
+**Preprocessing warning:** Workbench may use initial `-1` for extracted variables if you preprocess all downstream commands before running SVisualPy1. Execute the chain in dependency order, then check the actual `pp*_des.cmd` for resolved numerical SCR and ATP Goal voltages; preprocess downstream nodes again if necessary. Stop if any exported value is `x` or `-1`.
+
+## Static tests and actual run acceptance
+
+See [11_Dynamic_Workflow_Validation.md](11_Dynamic_Workflow_Validation.md). Static syntax/wiring checks can be performed outside Sentaurus, but **actual SWB run validation requires SProcess/SNMesh/SDevice/SVisualPy in the user's installation**. No TCAD execution is claimed by this commit.
+
+---
+
+## Previous documentation (2026-10-26/29, historical)
+
 # Electrical_Test — CMP SPAD 전기적 특성 검증 덱
 
 > **2026-10-26 상태:** 코드 작성·기존 원본 보존·정적 파일 연결 검사 완료. 실제 Sentaurus Workbench 전체 실행 및 VBD/SCR 정합은 **아직 미검증**.

@@ -1,10 +1,10 @@
 #setdep @node|-1@
 
-* CMP SPAD VBD/SCR calibration SDevice v1.3-PARENTMESH
+* CMP SPAD dynamic SDevice1 - VBD extraction only
 * 2026-08-28
 * Input uses the immediately upstream SMesh node via @node|-1@.
-* Physics, ionization-integral VBD definition, solver, and snapshots are
-* intentionally kept identical to the 2026-08-27 calibration deck.
+* Ionization-integral VBD physics and solver are unchanged.
+* Fixed voltage snapshots omitted; downstream SDevice2 uses extracted VBD.
 * This avoids @node|snmesh@ resolving to the first Mesh2bnd node.
 * Common project coordinate: z_if = raw_y - 0.300 um.
 
@@ -97,15 +97,5 @@ Solve {
   ){
     Coupled { Poisson Electron Hole }
 
-    Plot(FilePrefix="n@node@_V150" When(Contact="cathode" voltage=15.0))
-    Plot(FilePrefix="n@node@_V154" When(Contact="cathode" voltage=15.4))
-    Plot(FilePrefix="n@node@_V156" When(Contact="cathode" voltage=15.6))
-    Plot(FilePrefix="n@node@_V158" When(Contact="cathode" voltage=15.8))
-    Plot(FilePrefix="n@node@_V160" When(Contact="cathode" voltage=16.0))
-    Plot(FilePrefix="n@node@_V164" When(Contact="cathode" voltage=16.4))
-    Plot(FilePrefix="n@node@_V180" When(Contact="cathode" voltage=18.0))
-    Plot(FilePrefix="n@node@_V200" When(Contact="cathode" voltage=20.0))
-    Plot(FilePrefix="n@node@_V220" When(Contact="cathode" voltage=22.0))
-    Plot(FilePrefix="n@node@_V240" When(Contact="cathode" voltage=24.0))
   }
 }

@@ -1,38 +1,18 @@
-#setdep @node|sdevice@
-
-# CMP SPAD / SProcess electrical baseline equivalence check
-# v0.5: compact DOE output, SDE static-freeze v2.2 algorithms preserved.
-#
-# Reference: members/jujushmaterial/assets/tcad/spad-baseline-static-freeze/
-#            CMP_SPAD_Stage1_SVisualPy_v2.2_DOE_compact.txt
-# SDevice:   CMP_SPAD_BaselineImplementation_SDevice.txt (same physics and
-#            ionization-integral settings as SDE static-freeze SDevice).
-#
-# Workbench output ONLY: VBD_V, SCR_center_nm, SCR_width_nm.
-# Fixed SCR evaluation voltage 15.6V; do not substitute a VBD+Vex snapshot.
-# SDE coordinate: z_if = raw_y - 0.0um (SDE bulk surface at -0.3um).
-# SProcess coordinate: z_if = raw_y - 0.300um (bulk surface at 0.0um).
-# VBD criterion: first voltage where min(PhiElectron, PhiHole) crosses 1.
-# SCR edges: |E|=1e5 V/cm crossings bracketing net-doping zero crossing.
-
+#setdep @node|-1@
+#set VBD_V -1
+#set SCR_BIAS_V -1
+#set ATP_BIAS_V -1
+# CMP SPAD SVisualPy1 - exported VBD and dependent dynamic biases.
+# Parent -1 = SDevice1; these are SWB extracted variables, not parameters.
 import os
 import fnmatch
 import numpy as np
-
 VIS_NODE = @node@
-SNODE = @node|sdevice@
-
-CENTER_R = 4.6875
-Y_SI_SURFACE = 0.0
-Y_GRATING_SI_INTERFACE = 0.300
-SCR_E = 1.0e5
-SCR_SEARCH_MAX_IF = 1.30
-EVAL_BIAS = 15.6
-
+SNODE = @node|-1@
+DELTA_V = 0.197998
+ATP_EXCESS = 1.202002
 IV_FILE = f"n{SNODE}_des.plt"
-TDR_FILE = f"n{SNODE}_V156_des.tdr"
-AUDIT_FILE = f"n{VIS_NODE}_VBD_SCR_audit.txt"
-
+AUDIT_FILE = f"n{VIS_NODE}_VBD_dynamic_bias_audit.txt"
 
 def pickvar(dataset, patterns):
     names = list(sv.list_variables(dataset=dataset))
@@ -205,121 +185,19 @@ if pename is not None and phname is not None:
     vbd = vbd_from_phi(vv_raw, pe_raw, ph_raw)
 
 
-# ----------------------------------------------------------------------
-# 2. SCR: same fixed 15.6V / center radius / E field / crossing rule.
-# ----------------------------------------------------------------------
-scr_center_nm = np.nan
-scr_width_nm = np.nan
-zj_if = np.nan
-zsp_if = np.nan
-zsn_if = np.nan
-scr_valid = False
-tdr_ok = os.path.isfile(TDR_FILE)
-
-if tdr_ok:
-    sv.load_file(TDR_FILE, name="STATE")
-    # SDE reference creates an explicit state plot before taking a cut.
-    sv.create_plot(name="Plot_State", dataset="STATE")
-
-    center = create_cut("x", CENTER_R, "STATE", "CENTER")
-    yname = pickvar(center, ["Y", "y"])
-    if yname is None:
-        raise RuntimeError("Cutline coordinate variable not found")
-
-    y_raw = get_data(center, yname)
-    ec_raw = field_mag(center)
-
-    dname = pickvar(center, ["Doping", "DopingConcentration", "NetDoping"])
-    if dname is not None:
-        nd_raw = get_data(center, dname)
-    else:
-        dn = pickvar(center, ["DonorConcentration", "*Donor*"])
-        an = pickvar(center, ["AcceptorConcentration", "*Acceptor*"])
-        if dn is None or an is None:
-            raise RuntimeError("Doping variables not found")
-        nd_raw = get_data(center, dn) - get_data(center, an)
-
-    # Match reference preprocessing exactly: hDensity and avalanche generation
-    # arrays also participate in finite-data masking before SCR crossings.
-    hname = pickvar(center, ["hDensity", "*hDensity*"])
-    if hname is not None:
-        hp_raw = get_data(center, hname)
-    else:
-        hp_raw = np.zeros_like(y_raw)
-    agc_name = pickvar(
-        center,
-        [
-            "AvalancheGeneration",
-            "*AvalancheGeneration*",
-            "ImpactIonization",
-            "*ImpactIonization*"
-        ]
-    )
-    if agc_name is not None:
-        agc_raw = get_data(center, agc_name)
-    else:
-        agc_raw = np.zeros_like(y_raw)
-
-    z_if_raw = y_raw - Y_GRATING_SI_INTERFACE
-    z_surface_raw = y_raw - Y_SI_SURFACE
-    z_if, z_surface, ec, nd, hp, agc = sort_unique_many(
-        z_if_raw, z_surface_raw, ec_raw, nd_raw, hp_raw, agc_raw
-    )
-
-    # EXACT extraction structure of SDE static-freeze v2.2.
-    jc = crossings(z_if, nd, 0.0, lo=0.0, hi=SCR_SEARCH_MAX_IF)
-    zj_if = float(jc[0]) if jc.size else np.nan
-    scrc = crossings(z_if, ec, SCR_E, lo=0.0, hi=SCR_SEARCH_MAX_IF)
-
-    if np.isfinite(zj_if):
-        zsp_if, zsn_if = bracket_crossings(scrc, zj_if)
-    elif scrc.size >= 2:
-        zsp_if = float(scrc[0])
-        zsn_if = float(scrc[1])
-
-    wsc = (
-        zsn_if - zsp_if
-        if np.isfinite(zsp_if) and np.isfinite(zsn_if)
-        else np.nan
-    )
-    zsc_if = (
-        0.5 * (zsp_if + zsn_if)
-        if np.isfinite(zsp_if) and np.isfinite(zsn_if)
-        else np.nan
-    )
-    scr_valid = bool(
-        np.isfinite(zsp_if) and
-        np.isfinite(zsn_if) and
-        np.isfinite(wsc) and
-        (wsc > 0.0) and
-        np.isfinite(zsc_if)
-    )
-    scr_center_nm = zsc_if * 1000.0
-    scr_width_nm = wsc * 1000.0
-else:
-    print("SVISUALPY: V156_TDR_MISSING; SCR outputs are NA, no bias fallback")
-
-# Always leave trace data OUTSIDE SWB DOE columns.
+if not np.isfinite(vbd) or vbd <= DELTA_V:
+    raise RuntimeError(f"Invalid ionization-integral VBD: {vbd}")
+scr_bias = float(vbd - DELTA_V)
+atp_bias = float(vbd + ATP_EXCESS)
+if not (0 < scr_bias < vbd < atp_bias):
+    raise RuntimeError("Invalid SCR/VBD/ATP bias ordering")
 with open(AUDIT_FILE, "w") as audit:
-    audit.write(f"SDevice_node={SNODE}\n")
-    audit.write(f"IV_FILE={IV_FILE}\n")
-    audit.write(f"TDR_FILE={TDR_FILE}\n")
-    audit.write(f"SCR_evaluation_bias_V={EVAL_BIAS}\n")
-    audit.write(f"SCR_center_radius_um={CENTER_R}\n")
-    audit.write(f"SProcess_interface_raw_y_um={Y_GRATING_SI_INTERFACE}\n")
-    audit.write(f"SCR_electric_field_threshold_V_per_cm={SCR_E}\n")
-    audit.write(f"SCR_search_min_if_um=0.0\n")
-    audit.write(f"SCR_search_max_if_um={SCR_SEARCH_MAX_IF}\n")
-    audit.write(f"SCR_TDR_exists={int(tdr_ok)}\n")
-    audit.write(f"SCR_valid={int(scr_valid)}\n")
-    audit.write(f"z_junction_if_um={zj_if}\n")
-    audit.write(f"z_SCR_p_if_um={zsp_if}\n")
-    audit.write(f"z_SCR_n_if_um={zsn_if}\n")
-    audit.write(f"VBD_V={vbd}\n")
-    audit.write(f"SCR_center_nm={scr_center_nm}\n")
-    audit.write(f"SCR_width_nm={scr_width_nm}\n")
-
+    audit.write(f"VBD_V={vbd:.12g}\n")
+    audit.write(f"SCR_delta_V={DELTA_V:.12g}\n")
+    audit.write(f"ATP_ref_vex_V={ATP_EXCESS:.12g}\n")
+    audit.write(f"SCR_BIAS_V={scr_bias:.12g}\n")
+    audit.write(f"ATP_BIAS_V={atp_bias:.12g}\n")
 emit("VBD_V", vbd)
-emit("SCR_center_nm", scr_center_nm)
-emit("SCR_width_nm", scr_width_nm)
-print("SVISUALPY: COMPLETE (SDE-equivalent VBD/SCR rules)")
+emit("SCR_BIAS_V", scr_bias)
+emit("ATP_BIAS_V", atp_bias)
+print("SVISUALPY1: VBD and dependent biases exported")
