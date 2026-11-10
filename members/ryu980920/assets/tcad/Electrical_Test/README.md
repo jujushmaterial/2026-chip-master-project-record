@@ -4,7 +4,7 @@
 
 ## 연구 가설 (2026-11-10)
 
-- [독립 검증 가설 H1/H2](Hypotheses/README.md): DNW 심부·저농도화 / Trim DNW Mask 선택적 축소. **아직 TCAD로 검증하지 않은 연구 가설이며 덱과 DOE는 변경하지 않음.**
+- [2026-11-10 연구일지 — 가설 H1/H2](../../../timeline/2026-11/2026-11-10.md): DNW 심부·저농도화 및 Trim DNW Mask 선택적 축소. **가설 수립 단계이며, DOE 및 기존 공정 덱은 변경하지 않음.**
 
 ## SWB Tool chain (strict linear layout)
 
