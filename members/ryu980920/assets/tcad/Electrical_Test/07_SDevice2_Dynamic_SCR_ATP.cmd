@@ -1,7 +1,7 @@
 #setdep @node|-1@
 #setdep @node|-3@
 
-* CMP SPAD SDevice2 - dynamic SCR and ATP at extracted biases
+* CMP SPAD SDevice2 - percent-of-VBD SCR and ATP at extracted biases
 * 2026-08-28
 * Parent -1 is SVisualPy1; parent -3 is SNMesh2 (mesh source).
 * The SV1 DOE variables replace the goals for each experiment.
@@ -86,7 +86,7 @@ Solve {
   ){
     Coupled { Poisson Electron Hole }
   }
-  * Final converged state at VBD-0.197998V.
+  * Final converged state at SCR_BIAS_V = VBD*(1-SCR_BELOW_VBD_PCT/100).
   Plot(FilePrefix="n@node@_SCR")
   Quasistationary(
     InitialStep=1.0e-3 MinStep=1.0e-9 MaxStep=2.0e-3
@@ -95,6 +95,6 @@ Solve {
   ){
     Coupled { Poisson Electron Hole }
   }
-  * Final converged state at VBD+reference Vex; do NOT stop at breakdown.
+  * Final converged state at ATP_BIAS_V = VBD*(1+ATP_ABOVE_VBD_PCT/100).
   Plot(FilePrefix="n@node@_ATP")
 }

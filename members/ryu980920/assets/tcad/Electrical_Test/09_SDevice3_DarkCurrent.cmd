@@ -2,7 +2,7 @@
 #setdep @node|-5@
 
 *=============================================================================
-* CMP SPAD SDevice3 - dynamic sub-breakdown dark I-V, feedback ON
+* CMP SPAD SDevice3 - percent-below-VBD dark I-V, feedback ON
 * Version 1.0, 2026-08-27
 *
 * Source merge
@@ -110,14 +110,14 @@ Math {
 Solve {
   Coupled(Iterations=200 LineSearchDamping=1.0e-4) { Poisson }
   Coupled { Poisson Electron Hole }
-  * Ramp sub-breakdown to the SVisualPy1 extracted SCR bias.
+  * Ramp sub-breakdown to the independent SVisualPy1-extracted DARK bias (% below VBD).
   Quasistationary(
     InitialStep=1.0e-3
     MinStep=1.0e-9
     MaxStep=2.0e-3
     Increment=1.25
     Decrement=2.0
-    Goal { Name="cathode" Voltage=@SCR_BIAS_V@ }
+    Goal { Name="cathode" Voltage=@DARK_BIAS_V@ }
   ){
     Coupled { Poisson Electron Hole }
     CurrentPlot( Time=(Range=(0 1) Intervals=500) )

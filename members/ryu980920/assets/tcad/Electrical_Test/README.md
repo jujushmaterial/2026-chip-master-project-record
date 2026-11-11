@@ -1,4 +1,4 @@
-# Electrical_Test — VBD 기반 동적 SCR·ATP·암전류 평가 (2026-11-10)
+# Electrical_Test — VBD 백분율 기반 SCR·ATP·암전류 평가 (2026-11-11)
 
 > **현재 적용하는 구성:** 전기 노드 6개(SDevice 3개, SVisualPy 3개)를 순서대로 배치한다. 아래 과거의 15.6 V 고정 SCR 추출 방식은 현재 방식으로 대체되었다. 기존 기록과 07 전계 진단은 과거 참고자료로 남기며, 05·06번 덱의 이전 버전은 Git 이력에 보존되어 있다.
 
@@ -13,24 +13,29 @@
 | 노드 | 입력 덱 | 입력과 출력 |
 |---|---|---|
 | SDevice1 | [05_SDevice_VBD_SCR.cmd](05_SDevice_VBD_SCR.cmd) | SNMesh2(`@node|-1@`) Mesh에서 Ionization Integral로 VBD 계산 |
-| SVisualPy1 | [06_SVisualPy_VBD_SCR.py](06_SVisualPy_VBD_SCR.py) | SDevice1(`@node|-1@`) PLT에서 `DOE: VBD_V`, `SCR_BIAS_V`, `ATP_BIAS_V` 추출 |
+| SVisualPy1 | [06_SVisualPy_VBD_SCR.py](06_SVisualPy_VBD_SCR.py) | SDevice1(`@node|-1@`) PLT에서 `DOE: VBD_V`, `SCR_BIAS_V`, `DARK_BIAS_V`, `ATP_BIAS_V` 추출 |
 | SDevice2 | [07_SDevice2_Dynamic_SCR_ATP.cmd](07_SDevice2_Dynamic_SCR_ATP.cmd) | SNMesh2(`@node|-3@`) Mesh에서 두 추출 전압을 평가하여 `n<node>_SCR_des.tdr`, `n<node>_ATP_des.tdr` 생성 |
 | SVisualPy2 | [08_SVisualPy2_Dynamic_SCR_ATP.py](08_SVisualPy2_Dynamic_SCR_ATP.py) | 직전 SDevice2의 두 TDR에서 SCR 중심·폭 및 반경 방향 101개 Cutline ATP Map 추출 |
-| SDevice3 | [09_SDevice3_DarkCurrent.cmd](09_SDevice3_DarkCurrent.cmd) | SNMesh2(`@node|-5@`) Mesh와 `SCR_BIAS_V`를 사용해 Feedback 활성화 암전류 I–V 계산 |
+| SDevice3 | [09_SDevice3_DarkCurrent.cmd](09_SDevice3_DarkCurrent.cmd) | SNMesh2(`@node|-5@`) Mesh와 별도 `DARK_BIAS_V`를 사용해 Feedback 활성화 암전류 I–V 계산 |
 | SVisualPy3 | [10_SVisualPy3_DarkCurrent.py](10_SVisualPy3_DarkCurrent.py) | SDevice3 PLT와 SDevice1(`@node|-5@`)의 진단 PLT를 읽어 암전류 지표 추출 |
 
 **상대 노드 참조 주의:** `@node|-3@`, `@node|-5@`는 위 순서에서만 정확하다. 노드를 삽입하거나 순서를 바꾸면 참조를 다시 확인해야 한다. SDevice2와 SDevice3는 직전 SVisualPy가 아닌 **SNMesh2 Mesh**를 입력받는다.
 
 ## VBD 추출값으로 평가전압 자동 전달
 
-- `SCR_BIAS_V = VBD_V − 0.197998` V: 공통 SDE 기준 VBD와 15.6 V의 차이를 유지한다. SCR 중심 위치 목표는 약 180.202946 nm이다.
-- `ATP_BIAS_V = VBD_V + 1.202002` V: 공통 SDE VBD 약 15.797998 V와 17.0 V 사이의 Excess Bias를 유지한다. 과거 B측 ATP 진단 덱은 VBD 정의가 달랐으므로, ATP 절대값을 비교하기 전에 통일된 물리 설정으로 SDE 기준값을 재계산해야 한다.
-- SVisualPy1은 `#set ... -1`을 통해 SWB 추출 변수 초기값을 선언한 뒤 `DOE:` 숫자 출력으로 갱신한다. 공정 DOE 입력 Parameter를 새로 등록하지 않으며 SProcess2의 기존 14개 `@PARAMETER@` 연결은 유지한다.
+**2026-11-11 이후 현재 설정 (VBD 기준 비율, [surrogate evaluation assumption]):**
+- SCR: `SCR_BIAS_V = VBD_V × (1 − 1.2533/100)` → 각 소자의 항복전압보다 **1.2533% 낮은 전압**에서 중심·폭 추출.
+- Dark Current: `DARK_BIAS_V = VBD_V × (1 − 1.2533/100)` → 현재는 SCR과 같은 비율이지만 **독립적으로 변경 가능한 설정값**이다.
+- ATP: `ATP_BIAS_V = VBD_V × (1 + 7.6086/100)` → 각 소자의 항복전압보다 **7.6086% 높은 전압**에서 ATP 계산.
+- 초기 백분율은 공통 SDE R0 `VBD=15.7979980544 V`에 대해 SCR 15.6 V / ATP 17.0 V에 거의 일치하도록 기존 절대 전압 차이를 환산한 **4자리 소수 비율**이다. 해당 숫자는 Gao 논문에 명시된 SCR 측정 조건을 의미하지 않는다.
+- 세 비율의 **단일 수정 위치**는 [06_SVisualPy_VBD_SCR.py](06_SVisualPy_VBD_SCR.py)의 `SCR_BELOW_VBD_PCT`, `DARK_BELOW_VBD_PCT`, `ATP_ABOVE_VBD_PCT`이다. 이후 SDevice2·3 및 SVisualPy2·3는 계산된 SWB 추출 전압을 사용한다.
+- 예전 B측 ATP 진단 VBD 정의는 달랐으므로, ATP 절대값을 비교하기 전에 동일한 물리 설정으로 공통 SDE 기준을 다시 계산해야 한다.
+- SVisualPy1은 `#set ... -1`을 통해 SWB 추출 변수 초기값을 선언한 뒤 **4개의** `DOE:` 숫자 출력으로 갱신한다. 공정 DOE 입력 Parameter를 새로 등록하지 않으며 SProcess2의 기존 14개 `@PARAMETER@` 연결은 유지한다.
 - SDevice2는 추출된 전압을 각각 `Goal`로 사용하고 도달한 상태를 `_SCR`, `_ATP` TDR로 저장한다. **파일명은 고정 전압을 의미하지 않는다.**
 - SDevice2는 SDevice1과 기본 Avalanche 모델을 공유하며 `AvalPostProcessing`, `BreakdownProbability`를 사용한다. 항복 이후 ATP 전압까지 진행하도록 `BreakAtIonIntegral`은 사용하지 않는다.
-- SDevice3는 기존 SRH/Hurkx·BTBT/Hurkx 및 Avalanche Feedback 활성화 모델을 유지한다. `SCR_BIAS_V`까지만 계산하므로 해당 범위 밖인 15.6 V 암전류 지표는 NA일 수 있다.
+- SDevice3는 기존 SRH/Hurkx·BTBT/Hurkx 및 Avalanche Feedback 활성화 모델을 유지한다. 독립적인 `DARK_BIAS_V`까지만 계산하므로 해당 범위 밖인 15.6 V 암전류 지표는 NA일 수 있다.
 
-**전처리 주의:** SVisualPy1 실행 전에 후속 덱을 한 번에 전처리하면 초기값 `-1`이 들어갈 수 있다. SVisualPy1 완료 이후 의존성 순서대로 후속 노드를 실행하고 전처리된 `pp*_des.cmd`에서 두 `Goal` 전압이 숫자로 치환되었는지 확인한다. 값이 `x` 또는 `-1`이면 후속 노드 실행을 중지하고 재전처리한다.
+**전처리 주의:** SVisualPy1 실행 전에 후속 덱을 한 번에 전처리하면 초기값 `-1`이 들어갈 수 있다. SVisualPy1 완료 이후 의존성 순서대로 후속 노드를 실행하고 전처리된 `pp*_des.cmd`에서 SDevice2의 SCR·ATP와 SDevice3의 Dark Current, **세 `Goal` 전압**이 숫자로 치환되었는지 확인한다. 값이 `x` 또는 `-1`이면 후속 노드 실행을 중지하고 재전처리한다.
 
 ## 정적 검증과 실제 실행 통과 구분
 

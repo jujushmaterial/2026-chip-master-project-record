@@ -8,7 +8,8 @@
 # reference because, in the present SWB graph, that token resolves to n5.
 #
 # Main sub-breakdown dark-current metrics use the diagnostic ionization-
-# integral VBD from n5. The legacy feedback-ON inverse-fit is retained only
+# integral VBD from n5. Dark evaluation bias is independently percent-based.
+# The legacy feedback-ON inverse-fit is retained only
 # as a diagnostic metric and is not required for Dark_OK.
 #
 # Absolute DCR is not claimed without trap/lifetime calibration.
@@ -388,7 +389,12 @@ fit_ok = float(
 
 diag_vbd_ok = float(np.isfinite(vbd_diag))
 
-vnear = float(@SCR_BIAS_V@)
+vnear = float(@DARK_BIAS_V@)
+dark_below_pct_actual = (
+    100.0 * (vbd_diag - vnear) / vbd_diag
+    if np.isfinite(vbd_diag) and vbd_diag > 0.0
+    else np.nan
+)
 v50 = 0.50 * vbd_ref if np.isfinite(vbd_ref) else np.nan
 v90 = 0.90 * vbd_ref if np.isfinite(vbd_ref) else np.nan
 
@@ -454,7 +460,8 @@ dark_ok = float(
     np.isfinite(i50) and
     np.isfinite(i90) and
     np.isfinite(inear) and
-    np.isclose(vbd_diag-vnear, 0.197998, atol=1e-5) and
+    np.isfinite(dark_below_pct_actual) and
+    0.0 < dark_below_pct_actual < 100.0 and
     np.max(v) >= vnear - 1.0e-3
 )
 
@@ -583,12 +590,17 @@ with open(METRICS_FILE, "w") as m:
     write_metric(m, "I_anode_at_0p5VBD_A", i50)
     write_metric(m, "I_anode_at_0p9VBD_A", i90)
     write_metric(m, "I_anode_at_15p6V_A", i156)
+    # 기존 상세 리포트 키는 후속 분석 호환성을 위해 보존한다(이제 % 기반 값).
     write_metric(m, "I_anode_at_VBDminusDelta_A", inear)
     write_metric(m, "VBDminusDelta_bias_V", vnear)
+    write_metric(m, "I_anode_at_percentBelowVBD_A", inear)
+    write_metric(m, "percentBelowVBD_bias_V", vnear)
+    write_metric(m, "dark_below_VBD_percent", dark_below_pct_actual)
     write_metric(m, "I_density_at_0p5VBD_A_per_um2", i50_density)
     write_metric(m, "I_density_at_0p9VBD_A_per_um2", i90_density)
     write_metric(m, "I_density_at_15p6V_A_per_um2", i156_density)
     write_metric(m, "I_density_at_VBDminusDelta_A_per_um2", inear_density)
+    write_metric(m, "I_density_at_percentBelowVBD_A_per_um2", inear_density)
     write_metric(m, "estimated_M_at_0p9VBD", m90)
 
     write_metric(m, "global_SRH_TAT_eq_A_at_0p9VBD", srh90)

@@ -22,10 +22,12 @@ AUDIT_FILE = f"n{VIS_NODE}_SCR_ATP_audit.txt"
 ATP_MAP_CSV = f"n{VIS_NODE}_ATP_map.csv"
 if not 0 < SCR_BIAS < VBD < ATP_BIAS:
     raise RuntimeError("Invalid dynamic bias ordering")
-if abs(VBD-SCR_BIAS-0.197998) > 1e-5:
-    raise RuntimeError("SCR bias differs from VBD-0.197998V")
-if abs(ATP_BIAS-VBD-1.202002) > 1e-5:
-    raise RuntimeError("ATP bias differs from VBD+1.202002V")
+# 절대 전압차 대신 각 후보 VBD에 대한 상대 바이어스 비율(%)을 검사한다.
+SCR_BELOW_PCT_ACTUAL = 100.0 * (VBD - SCR_BIAS) / VBD
+ATP_ABOVE_PCT_ACTUAL = 100.0 * (ATP_BIAS - VBD) / VBD
+if not (np.isfinite(SCR_BELOW_PCT_ACTUAL) and 0.0 < SCR_BELOW_PCT_ACTUAL < 100.0 and
+        np.isfinite(ATP_ABOVE_PCT_ACTUAL) and ATP_ABOVE_PCT_ACTUAL > 0.0):
+    raise RuntimeError("Invalid percentage-based SCR/ATP biases")
 
 def pickvar(dataset, patterns):
     names = list(sv.list_variables(dataset=dataset))
@@ -364,6 +366,8 @@ atp_ok = bool(np.isfinite(atp_axis180) and np.isfinite(atp_peak180)
               and np.isfinite(atp_peak))
 with open(AUDIT_FILE, "w") as audit:
     audit.write(f"VBD_V={VBD:.12g}\n")
+    audit.write(f"SCR_below_VBD_pct={SCR_BELOW_PCT_ACTUAL:.12g}\n")
+    audit.write(f"ATP_above_VBD_pct={ATP_ABOVE_PCT_ACTUAL:.12g}\n")
     audit.write(f"SCR_BIAS_V={SCR_BIAS:.12g}\n")
     audit.write(f"ATP_BIAS_V={ATP_BIAS:.12g}\n")
     audit.write(f"SCR_TDR={TDR_FILE}\n")

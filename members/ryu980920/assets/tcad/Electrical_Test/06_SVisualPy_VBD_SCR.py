@@ -1,16 +1,21 @@
 #setdep @node|-1@
 #set VBD_V -1
 #set SCR_BIAS_V -1
+#set DARK_BIAS_V -1
 #set ATP_BIAS_V -1
-# CMP SPAD SVisualPy1 - exported VBD and dependent dynamic biases.
-# Parent -1 = SDevice1; these are SWB extracted variables, not parameters.
+# CMP SPAD SVisualPy1 - VBD 기반 상대 바이어스(%) 추출.
+# Parent -1 = SDevice1; VBD/Bias는 SWB 추출 변수이며 공정 입력 파라미터가 아니다.
 import os
 import fnmatch
 import numpy as np
 VIS_NODE = @node@
 SNODE = @node|-1@
-DELTA_V = 0.197998
-ATP_EXCESS = 1.202002
+# [surrogate evaluation assumption] 공통 SDE R0(15.7979980544 V)의
+# SCR 15.6 V / ATP 17.0 V를 백분율로 환산한 4자리 소수 초기값.
+# 비율을 바꿀 때에는 이 3개 값만 변경한다(기존 SWB 공정 Parameter는 그대로 유지).
+SCR_BELOW_VBD_PCT = 1.2533
+DARK_BELOW_VBD_PCT = 1.2533
+ATP_ABOVE_VBD_PCT = 7.6086
 IV_FILE = f"n{SNODE}_des.plt"
 AUDIT_FILE = f"n{VIS_NODE}_VBD_dynamic_bias_audit.txt"
 
@@ -185,19 +190,27 @@ if pename is not None and phname is not None:
     vbd = vbd_from_phi(vv_raw, pe_raw, ph_raw)
 
 
-if not np.isfinite(vbd) or vbd <= DELTA_V:
+if not np.isfinite(vbd) or vbd <= 0.0:
     raise RuntimeError(f"Invalid ionization-integral VBD: {vbd}")
-scr_bias = float(vbd - DELTA_V)
-atp_bias = float(vbd + ATP_EXCESS)
-if not (0 < scr_bias < vbd < atp_bias):
-    raise RuntimeError("Invalid SCR/VBD/ATP bias ordering")
+if not (0.0 < SCR_BELOW_VBD_PCT < 100.0 and
+        0.0 < DARK_BELOW_VBD_PCT < 100.0 and
+        ATP_ABOVE_VBD_PCT > 0.0):
+    raise RuntimeError("Invalid percent-based bias settings")
+scr_bias = float(vbd * (1.0 - SCR_BELOW_VBD_PCT / 100.0))
+dark_bias = float(vbd * (1.0 - DARK_BELOW_VBD_PCT / 100.0))
+atp_bias = float(vbd * (1.0 + ATP_ABOVE_VBD_PCT / 100.0))
+if not (0.0 < scr_bias < vbd < atp_bias and 0.0 < dark_bias < vbd):
+    raise RuntimeError("Invalid SCR/DARK/VBD/ATP bias ordering")
 with open(AUDIT_FILE, "w") as audit:
     audit.write(f"VBD_V={vbd:.12g}\n")
-    audit.write(f"SCR_delta_V={DELTA_V:.12g}\n")
-    audit.write(f"ATP_ref_vex_V={ATP_EXCESS:.12g}\n")
+    audit.write(f"SCR_below_VBD_pct={SCR_BELOW_VBD_PCT:.12g}\n")
+    audit.write(f"DARK_below_VBD_pct={DARK_BELOW_VBD_PCT:.12g}\n")
+    audit.write(f"ATP_above_VBD_pct={ATP_ABOVE_VBD_PCT:.12g}\n")
     audit.write(f"SCR_BIAS_V={scr_bias:.12g}\n")
+    audit.write(f"DARK_BIAS_V={dark_bias:.12g}\n")
     audit.write(f"ATP_BIAS_V={atp_bias:.12g}\n")
 emit("VBD_V", vbd)
 emit("SCR_BIAS_V", scr_bias)
+emit("DARK_BIAS_V", dark_bias)
 emit("ATP_BIAS_V", atp_bias)
-print("SVISUALPY1: VBD and dependent biases exported")
+print("SVISUALPY1: VBD and percent-based SCR/DARK/ATP biases exported")
