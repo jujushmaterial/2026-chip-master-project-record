@@ -6,7 +6,9 @@
 * Parent -1 is SVisualPy1; parent -3 is SNMesh2 (mesh source).
 * The SV1 DOE variables replace the goals for each experiment.
 * Exact goal-state TDRs: n<node>_SCR_des.tdr and n<node>_ATP_des.tdr.
-* VBD physics is aligned with SDevice1; BreakdownProbability is additional.
+* Diagnostic physics/solver copied from prior SDE ATP diagnostic deck.
+* CAUTION: Avalanche ElectricField differs from SDevice1 GradQuasiFermi VBD.
+* This is a convergence experiment, NOT yet a harmonized final VBD/ATP model.
 * BreakAtIonIntegral is intentionally absent so ATP can be evaluated.
 * SProcess interface coordinate: z_if = raw_y - 0.300 um.
 
@@ -15,6 +17,7 @@ File {
   Current = "@plot@"
   Plot    = "@tdrdat@"
   Output  = "@log@"
+  IonIntegral = "n@node@_ionpath.tdr"
 }
 
 Electrode {
@@ -25,16 +28,19 @@ Electrode {
 
 Physics {
   Temperature=300.0
+  AreaFactor=1.0
   Fermi
   EffectiveIntrinsicDensity(OldSlotboom)
   Mobility(
     DopingDependence
     HighFieldSaturation(GradQuasiFermi)
+    Enormal
   )
   Recombination(
-    SRH
+    SRH(DopingDependence TempDependence Tunneling(Hurkx))
     Auger
-    Avalanche(vanOverstraeten GradQuasiFermi)
+    Band2Band(Model=Hurkx)
+    Avalanche(vanOverstraeten ElectricField)
   )
   BreakdownProbability(
     MinElectricField=1.0e5
@@ -46,12 +52,17 @@ Plot {
   Doping DonorConcentration AcceptorConcentration
   eDensity hDensity SpaceCharge
   ElectricField/Vector Potential
+  eQuasiFermi hQuasiFermi
+  eGradQuasiFermi/Vector hGradQuasiFermi/Vector
   eCurrent/Vector hCurrent/Vector Current/Vector
   eMobility hMobility
+  SRHRecombination Auger
+  eBand2bandGeneration hBand2bandGeneration Band2bandGeneration
+  eAvalancheGeneration hAvalancheGeneration AvalancheGeneration
   eAlphaAvalanche hAlphaAvalanche
-  AvalancheGeneration
   eIonIntegral hIonIntegral MeanIonIntegral
   eBreakdownProbability hBreakdownProbability jBreakdownProbability
+  ConductionBandEnergy ValenceBandEnergy
 }
 
 Math {
@@ -62,7 +73,7 @@ Math {
   Digits=6
   ErrRef(Electron)=1.0e4
   ErrRef(Hole)=1.0e4
-  Iterations=30
+  Iterations=100
   Notdamped=100
   Number_of_Threads=4
   RhsMin=1.0e-15
@@ -71,8 +82,10 @@ Math {
   AvalPostProcessing
 
   ComputeIonizationIntegrals(
-    MinElectricField=1.0e5
-    direction="eGradQuasiFermi"
+    MinElectricField=2.0e5
+    SaveEIonIntegralPaths=1
+    SaveHIonIntegralPaths=1
+    WriteAll
   )
 }
 
