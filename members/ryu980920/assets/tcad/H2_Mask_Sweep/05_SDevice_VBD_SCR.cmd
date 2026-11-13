@@ -1,12 +1,10 @@
 #setdep @node|-1@
 
-* CMP SPAD dynamic SDevice1 - VBD extraction only
-* 2026-08-28
-* Input uses the immediately upstream SMesh node via @node|-1@.
-* Ionization-integral VBD physics and solver are unchanged.
-* Fixed voltage snapshots omitted; downstream SDevice2 uses extracted VBD.
-* This avoids @node|snmesh@ resolving to the first Mesh2bnd node.
-* Common project coordinate: z_if = raw_y - 0.300 um.
+* H2 SDevice1 - VBD extraction, SDE static-baseline physics aligned
+* Source of physics/math: CMP_SPAD_VBD_Diagnostic_SDevice_v1.1_dependency_fix.txt
+* H2-specific direct upstream mesh dependency and dynamic SV1 workflow retained.
+* Model: standard SRH + Auger + vanOverstraeten GradQuasiFermi.
+* No Hurkx TAT/BTBT here, matching the SDE baseline VBD deck.
 
 File {
   Grid    = "n@node|-1@_msh.tdr"
@@ -96,6 +94,5 @@ Solve {
     Goal { Name="cathode" Voltage=25.0 }
   ){
     Coupled { Poisson Electron Hole }
-
   }
 }
