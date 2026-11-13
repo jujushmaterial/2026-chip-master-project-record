@@ -269,8 +269,44 @@ else:
     raise RuntimeError("Exact dynamic SCR TDR missing")
 
 
+# SCR boundary diagnostic. Preserve the frozen SDE extraction rule, but
+# do not prevent ATP analysis when the SCR threshold crossings are missing.
+# Raw CSV retains NaN/Inf rows, filtered CSV is exactly the data used for SCR.
+diag_raw_file = f"n{VIS_NODE}_SCR_cut_raw.csv"
+diag_file = f"n{VIS_NODE}_SCR_cut.csv"
+np.savetxt(
+    diag_raw_file,
+    np.column_stack((z_if_raw, ec_raw, nd_raw, hp_raw, agc_raw)),
+    delimiter=",",
+    header="DepthFromInterface_um,ElectricField_Vcm,NetDoping_cm3,hDensity_cm3,AvalancheGeneration_cm3s",
+    comments="",
+    fmt="%.12e"
+)
+np.savetxt(
+    diag_file,
+    np.column_stack((z_if, ec, nd)),
+    delimiter=",",
+    header="DepthFromInterface_um,ElectricField_Vcm,NetDoping_cm3",
+    comments="",
+    fmt="%.12e"
+)
+
+print("=== SCR BOUNDARY DIAGNOSTIC ===")
+print("SCR bias (V):", SCR_BIAS)
+print("Raw / filtered cut points:", len(y_raw), "/", len(z_if))
+print("Net doping variable:", dname if dname is not None else "Donor - Acceptor")
+print("Finite field / doping raw points:",
+      int(np.isfinite(ec_raw).sum()), "/", int(np.isfinite(nd_raw).sum()))
+print("Junction crossings (um):", jc)
+print("E-field threshold crossings (um):", scrc)
+print("Selected junction (um):", zj_if)
+print("Selected lower / upper (um):", zsp_if, zsn_if)
+print("SCR_OK:", int(scr_valid))
+print("SCR diagnostic CSVs:", diag_raw_file, diag_file)
 if not scr_valid:
-    raise RuntimeError("Invalid SCR field boundaries")
+    print("WARNING: Invalid SCR field boundaries; reporting SCR as unavailable.")
+    print("WARNING: ATP analysis continues independently using the ATP TDR.")
+
 if not os.path.isfile(ATP_FILE):
     raise RuntimeError(f"Missing target ATP TDR: {ATP_FILE}")
 try:
@@ -375,6 +411,15 @@ with open(AUDIT_FILE, "w") as audit:
     audit.write(f"SCR_center_nm={scr_center_nm:.12g}\n")
     audit.write(f"SCR_width_nm={scr_width_nm:.12g}\n")
     audit.write(f"z_junction_if_um={zj_if:.12g}\n")
+    audit.write(f"SCR_OK={int(scr_valid)}\n")
+    audit.write(f"SCR_junction_crossings_if_um={jc.tolist()}\n")
+    audit.write(f"SCR_field_crossings_if_um={scrc.tolist()}\n")
+    audit.write(f"SCR_lower_if_um={zsp_if:.12g}\n")
+    audit.write(f"SCR_upper_if_um={zsn_if:.12g}\n")
+    audit.write(f"SCR_raw_cut_points={len(y_raw)}\n")
+    audit.write(f"SCR_filtered_cut_points={len(z_if)}\n")
+    audit.write(f"SCR_diagnostic_raw_csv={diag_raw_file}\n")
+    audit.write(f"SCR_diagnostic_filtered_csv={diag_file}\n")
     audit.write(f"ATP_Vex_V={ATP_BIAS-VBD:.12g}\n")
     audit.write(f"ATP_success_cuts={len(pp_list)}/101\n")
     audit.write(f"ATP_cut_errors={errors}\n")
