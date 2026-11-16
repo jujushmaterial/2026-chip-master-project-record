@@ -1,0 +1,14 @@
+{
+  "source": "center_X_last_state_profile.csv",
+  "source_sha256": "815569ca03d3227083fe7b248737e76f8a4c21280a5fcf29b444891b0bfb565d",
+  "method": "Independent piecewise-linear crossing calculation from original CSV, no Sentaurus execution",
+  "samples": 28,
+  "junction_depth_nm": 164.24373018577634,
+  "SCR_upper_depth_nm": -2.0508920429398265,
+  "SCR_lower_depth_nm": 303.4205120063043,
+  "SCR_center_nm": 150.68480998168224,
+  "SCR_width_nm": 305.47140404924414,
+  "SCR_center_global_Z_um": -0.15068480998168224,
+  "E_threshold_V_per_cm": 100000.0,
+  "source_distribution": "local_only_not_uploaded"
+}

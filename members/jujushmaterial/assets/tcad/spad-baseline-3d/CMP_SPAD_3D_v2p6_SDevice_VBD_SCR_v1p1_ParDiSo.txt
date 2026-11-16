@@ -1,0 +1,122 @@
+﻿#setdep @node|sde@
+
+* CMP SPAD - 3D Candidate-B v2.6 electrical baseline, SDevice v1.1 solver comparison
+* Sentaurus Device T-2022.03; STATIC REVIEW ONLY, NOT runtime validated.
+* v1.1: explicit ParDiSo + linear solver/error logging; frozen physics/tolerances.
+* Direct solver memory can exceed the failed ILS run's 15.72 GB.
+* First use the companion 0.3 V diagnostic in a separate Workbench node/run.
+* AvalPostProcessing: IV excludes self-consistent avalanche feedback.
+* Grid: first SDE mesh n@node|sde@_msh.tdr (UpperSi=Oxide, electrical surrogate).
+* NOT the second n@node|sde@_physical_msh.tdr (UpperSi=Silicon).
+* Keep frozen 2D physics, contacts, 300 K and 0 -> 14 -> 25 V sweep.
+* Remove Math { Cylindrical }: this mesh is an actual Cartesian 3D volume.
+* VBD definition remains the first min(PhiElectron,PhiHole)=1 crossing.
+* SCR is always evaluated at absolute cathode bias 15.6 V, not at VBD+Vex.
+* The solver can stop at breakdown, so some later snapshots may not exist.
+
+File {
+  Grid    = "n@node|sde@_msh.tdr"
+  Current = "@plot@"
+  Plot    = "@tdrdat@"
+  Output  = "@log@"
+}
+
+Electrode {
+  { Name="anode"     Voltage=0.0 }
+  { Name="cathode"   Voltage=0.0 }
+  { Name="substrate" Voltage=0.0 }
+}
+
+Physics {
+  Temperature=300.0
+  Fermi
+  EffectiveIntrinsicDensity(OldSlotboom)
+  Mobility(
+    DopingDependence
+    HighFieldSaturation(GradQuasiFermi)
+  )
+  Recombination(
+    SRH
+    Auger
+    Avalanche(vanOverstraeten GradQuasiFermi)
+  )
+}
+
+Plot {
+  Doping DonorConcentration AcceptorConcentration
+  eDensity hDensity SpaceCharge
+  ElectricField/Vector Potential
+  eCurrent/Vector hCurrent/Vector Current/Vector
+  eMobility hMobility
+  eAlphaAvalanche hAlphaAvalanche
+  AvalancheGeneration
+  eIonIntegral hIonIntegral MeanIonIntegral
+}
+
+Math {
+  Method=ParDiSo
+  PrintLinearSolver
+  CNormPrint
+  * Deliberately no Cylindrical: SDE v2.6 is a complete 3D mesh.
+  Extrapolate
+  Derivatives
+  RelErrControl
+  Digits=6
+  ErrRef(Electron)=1.0e4
+  ErrRef(Hole)=1.0e4
+  Iterations=30
+  Notdamped=100
+  Number_of_Threads=4
+  RhsMin=1.0e-15
+  ExitOnFailure
+
+  AvalPostProcessing
+  BreakAtIonIntegral
+
+  ComputeIonizationIntegrals(
+    MinElectricField=1.0e5
+    direction="eGradQuasiFermi"
+  )
+}
+
+Solve {
+  Coupled(Iterations=200 LineSearchDamping=1.0e-4) { Poisson }
+  Coupled { Poisson Electron Hole }
+
+  Plot(FilePrefix="n@node@_V000")
+
+  Quasistationary(
+    InitialStep=1.0e-3
+    MinStep=1.0e-8
+    MaxStep=2.0e-2
+    Increment=1.35
+    Decrement=2.0
+    Goal { Name="cathode" Voltage=14.0 }
+  ){
+    Coupled { Poisson Electron Hole }
+  }
+
+  Quasistationary(
+    InitialStep=1.0e-3
+    MinStep=1.0e-9
+    MaxStep=2.0e-3
+    Increment=1.25
+    Decrement=2.0
+    Goal { Name="cathode" Voltage=25.0 }
+  ){
+    Coupled { Poisson Electron Hole }
+
+    * Same fixed-voltage snapshots as the frozen 2D SDevice deck.
+    * The V156 output is n@node@_V156_des.tdr if reached.
+    Plot(FilePrefix="n@node@_V150" When(Contact="cathode" Voltage=15.0))
+    Plot(FilePrefix="n@node@_V154" When(Contact="cathode" Voltage=15.4))
+    Plot(FilePrefix="n@node@_V156" When(Contact="cathode" Voltage=15.6))
+    Plot(FilePrefix="n@node@_V158" When(Contact="cathode" Voltage=15.8))
+    Plot(FilePrefix="n@node@_V160" When(Contact="cathode" Voltage=16.0))
+    Plot(FilePrefix="n@node@_V164" When(Contact="cathode" Voltage=16.4))
+    Plot(FilePrefix="n@node@_V180" When(Contact="cathode" Voltage=18.0))
+    Plot(FilePrefix="n@node@_V200" When(Contact="cathode" Voltage=20.0))
+    Plot(FilePrefix="n@node@_V220" When(Contact="cathode" Voltage=22.0))
+    Plot(FilePrefix="n@node@_V240" When(Contact="cathode" Voltage=24.0))
+  }
+}

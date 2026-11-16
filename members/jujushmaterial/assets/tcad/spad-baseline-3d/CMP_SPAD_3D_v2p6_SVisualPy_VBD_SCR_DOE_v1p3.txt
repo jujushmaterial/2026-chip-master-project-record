@@ -1,0 +1,665 @@
+#setdep @node|sdevice@
+# CMP SPAD SVisualPy v1.3: preserve SCR boundary above the STI-bottom reference.
+# Paste into a Sentaurus Workbench SVisual Python tool, AFTER sdevice.
+# Static/local numerical checks only; server SVisual API execution unverified.
+# No 15.6 V SCR extraction. n*_des.tdr is the LAST state, not the VBD interpolant.
+
+import os
+import re
+import csv
+import json
+import time
+import uuid
+import traceback
+import numpy as np
+import svisual as sv
+
+VIS_NODE = @node@
+SD_NODE = @node|sdevice@
+IV_FILE = "n{}_des.plt".format(SD_NODE)
+LOG_FILE = "n{}_des.log".format(SD_NODE)
+LAST_TDR = "n{}_des.tdr".format(SD_NODE)
+V156_TDR = "n{}_V156_des.tdr".format(SD_NODE)
+# Historical value recorded in the frozen 2D OpBias deck, NOT fitted by this code.
+REFERENCE_2D_VBD_V = 15.7979980544
+REVIEW_LAST_STATE = True
+EXPORT_PNG = True
+# User-selected evaluation: LAST converged state, not fixed 15.6 V.
+SCR_E_VPCM = 1.0e5
+SCR_DEPTH_MAX_UM = 1.30
+SCR_BOUNDARY_DEPTH_MIN_UM = -0.300
+SCR_BULK_TOP_Z_UM = 0.300
+SCR_ACTIVE_RADIUS_UM = 12.50
+SCR_CENTER_X_UM = 4.6875
+
+RUN_ID = time.strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:6]
+PREFIX = "n{}_spad3d_vbd_{}".format(VIS_NODE, RUN_ID)
+OUT = os.path.abspath(PREFIX + "_output")
+WARNINGS = []
+NATIVE_CALLS = []
+METRICS = {"status": "RUNNING", "VBD_V": None, "SCR_15p6_computed": False,
+           "SCR_15p6_um": None,
+           "SCR_note": "SCR DOE evaluates the last converged state. Fixed 15.6 V SCR still requires a separate verified solution.",
+           "current_units": "A, full device; no 2*pi or width multiplier",
+           "physics_note": "AvalPostProcessing: no self-consistent avalanche feedback in IV",
+           "state_bias_note": "Last TDR bias inferred from matching same-run log/PLT; not independently read from TDR metadata."}
+METRICS.update({"SCR_center_nm": None, "SCR_width_nm": None, "SCR_volume_um3": None,
+                "SCR_bias_V": None, "SCR_line_OK": 0, "SCR_volume_OK": 0,
+                "SCR_definition": "E>=1e5 V/cm proxy; not a carrier-neutrality depletion criterion",
+                "SCR_center_definition": "midpoint of E-threshold boundaries around first net-doping junction; x=4.6875,y=0 um; positive depth below STI bottom",
+                "SCR_volume_definition": "integral of nodal E/radius indicator in Bulk, r<=12.5 um, -1.30<=Z<=0.30 um; sum of below/above STI-bottom contributions; mesh-dependent estimate"})
+
+
+def write_json(name, obj):
+    with open(os.path.join(OUT, name), "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False, indent=2, allow_nan=False)
+
+
+def warn(tag, exc):
+    message = "{}: {}".format(tag, exc)
+    WARNINGS.append(message)
+    print("SPAD3D WARNING " + message)
+
+
+def optional(tag, function):
+    try:
+        return function()
+    except Exception as exc:
+        warn(tag, repr(exc))
+        return None
+
+
+def check_native_result(value, label):
+    # T-2022.03 can return an error string rather than raising a Python exception.
+    if isinstance(value, str) and re.search(r"^\s*Error\s*:", value, re.I):
+        raise RuntimeError("{} returned a native SVisual error: {}".format(label, value))
+    return value
+
+
+def native_call(label, operation_callable, *args, **kwargs):
+    event = {"operation": label, "arguments": repr(args), "keywords": repr(kwargs)}
+    try:
+        value = operation_callable(*args, **kwargs)
+        event["returned"] = repr(value)[:1500]
+        check_native_result(value, label)
+        event["status"] = "OK"
+        return value
+    except Exception as exc:
+        event["status"] = "ERROR"
+        event["error"] = repr(exc)
+        raise
+    finally:
+        NATIVE_CALLS.append(event)
+        if os.path.isdir(OUT):
+            write_json("native_api_trace.json", NATIVE_CALLS)
+
+
+def vector(values, label):
+    a = np.asarray(values, dtype=float)
+    if a.ndim != 1 or len(a) == 0 or not np.all(np.isfinite(a)):
+        raise ValueError(label + ": expected nonempty finite 1D data")
+    return a
+
+
+def normalized(name):
+    return re.sub(r"[^a-z0-9]", "", str(name).lower())
+
+
+def select_name(names, aliases, required=True):
+    # Exact normalized aliases only: do not confuse anode and cathode or e/h.
+    for alias in aliases:
+        matches = [str(n) for n in names if normalized(n) == normalized(alias)]
+        if len(matches) > 1:
+            raise ValueError("Ambiguous variable {}: {}".format(alias, matches))
+        if matches:
+            return matches[0]
+    if required:
+        raise KeyError("Missing {}. Available: {}".format(aliases, list(names)))
+    return None
+
+
+def get(dataset, name):
+    value = sv.get_variable_data(dataset=dataset, varname=name)
+    return vector(check_native_result(value, "get_variable_data "+name), name)
+
+
+def same_lengths(columns):
+    arrays = {k: vector(v, k) for k, v in columns.items()}
+    if len({len(a) for a in arrays.values()}) != 1:
+        raise ValueError("Dataset variable lengths differ")
+    return arrays
+
+
+def save_csv(name, columns):
+    columns = same_lengths(columns)
+    path = os.path.join(OUT, name)
+    keys = list(columns)
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(keys)
+        w.writerows(zip(*(columns[k] for k in keys)))
+    return path
+
+
+def sorted_mean_duplicates(columns):
+    # Same duplicate-bias averaging convention as frozen 2D v2.2 SVisualPy.
+    c = same_lengths(columns)
+    x = c["ReverseBias_V"]
+    order = np.argsort(x, kind="mergesort")
+    unique, inverse, counts = np.unique(x[order], return_inverse=True, return_counts=True)
+    result = {}
+    for name, a in c.items():
+        result[name] = np.bincount(inverse, weights=a[order]) / counts
+    result["ReverseBias_V"] = unique
+    return result
+
+
+def first_upward_crossing(x, y, level=1.0):
+    x, y = vector(x, "crossing voltage"), vector(y, "crossing integral")
+    if len(x) != len(y) or len(x) < 2 or np.any(np.diff(x) <= 0):
+        raise ValueError("Crossing requires increasing, unique voltage samples")
+    if y[0] >= level:
+        raise ValueError("First sample already meets threshold; VBD not bracketed")
+    for i in range(1, len(x)):
+        if y[i-1] < level <= y[i]:
+            fraction = (level-y[i-1]) / (y[i]-y[i-1])
+            return {"value_V": float(x[i-1] + fraction*(x[i]-x[i-1])),
+                    "bracket_low_V": float(x[i-1]), "bracket_high_V": float(x[i]),
+                    "criterion_low": float(y[i-1]), "criterion_high": float(y[i]),
+                    "lower_index": i-1, "upper_index": i}
+    return None
+
+
+def electric_magnitude(dataset, names):
+    scalar = select_name(names, ["AbsElectricField", "Abs(ElectricField)",
+                                 "Abs(ElectricField-V)"], required=False)
+    if scalar:
+        return np.abs(get(dataset, scalar))
+    components = []
+    for axis in "XYZ":
+        n = select_name(names, ["ElectricField-"+axis, "ElectricField/"+axis.lower(),
+                                "ElectricField_"+axis, "ElectricField-V"+axis.lower()])
+        components.append(get(dataset, n))
+    if len({len(a) for a in components}) != 1:
+        raise ValueError("Electric-field component lengths differ")
+    return np.sqrt(sum(a*a for a in components))
+
+
+def level_crossings(x, y, level, lo=0., hi=1.30):
+    x, y = vector(x, "depth"), vector(y, "profile")
+    if len(x) != len(y) or np.any(np.diff(x) <= 0):
+        raise ValueError("Crossing coordinates must be unique and increasing")
+    found = []
+    for i in range(1, len(x)):
+        if y[i] != y[i-1] and (y[i-1]-level)*(y[i]-level) <= 0:
+            xc = x[i-1]+(level-y[i-1])*(x[i]-x[i-1])/(y[i]-y[i-1])
+            if lo <= xc <= hi:
+                found.append(float(xc))
+    return np.unique(found)
+
+
+def scr_from_profile(depth, net, field, threshold=1e5, max_depth=1.30, min_boundary_depth=-.300):
+    c = sorted_mean_duplicates({"ReverseBias_V": depth, "net": net, "E": field})
+    d, nd, ef = c["ReverseBias_V"], c["net"], c["E"]
+    if len(d) < 3:
+        raise ValueError("Too few samples for SCR boundaries")
+    junctions = level_crossings(d, nd, 0., hi=max_depth)
+    if not len(junctions):
+        raise ValueError("SCR unavailable: no net-doping junction in search window")
+    junction = float(junctions[0])
+    if np.interp(junction, d, ef) < threshold:
+        raise ValueError("Junction is below SCR field threshold; do not bracket a low-field valley")
+    # Junction search remains below STI bottom, as in the frozen 2D definition.
+    # Its enclosing field boundary can lie ABOVE that reference plane (negative depth).
+    # Do not discard such a boundary or replace it with zero.
+    edges = level_crossings(d, ef, threshold, lo=min_boundary_depth, hi=max_depth)
+    lower, upper = edges[edges <= junction], edges[edges > junction]
+    if not len(lower) or not len(upper):
+        raise ValueError("SCR unavailable: both threshold boundaries are required; no clipped-window estimate")
+    p, n = float(lower[-1]), float(upper[0])
+    width = n-p
+    if width <= 0:
+        raise ValueError("Invalid SCR width")
+    return {"SCR_p_depth_um": p, "SCR_n_depth_um": n, "junction_depth_um": junction,
+            "SCR_center_nm": 500.*(p+n), "SCR_width_nm": 1000.*width,
+            "SCR_center_global_Z_um": -.5*(p+n)}
+
+
+def checked_volume(value, name, upper):
+    check_native_result(value, "integrate_field "+name)
+    a = np.asarray(value, dtype=float)
+    if a.size != 1 or not np.all(np.isfinite(a)):
+        raise ValueError(name+": integration did not return a finite scalar")
+    result = float(a.reshape(-1)[0])
+    if result < 0 or result > upper*(1.+1e-6):
+        raise ValueError(name+": volume outside integration-domain bounds")
+    return result
+
+
+def integrate_scr_volume(plot, fields):
+    # SVisual integrates the dimensionless nodal indicator on the actual 3D mesh.
+    # This is a mesh-dependent effective high-field volume, NOT pi*R^2*line_width.
+    r, depth = SCR_ACTIVE_RADIUS_UM, SCR_DEPTH_MAX_UM
+    if not (0 < r <= 12.5 and 0 < depth <= 2.5):
+        raise ValueError("SCR integration bounds exceed the validated Candidate B domain")
+    window = [-r, -r, -depth, r, r, 0.]
+    magnitude = select_name(fields, ["Abs(ElectricField)", "AbsElectricField", "Abs(ElectricField-V)"], False)
+    if magnitude:
+        ef = "<{}>".format(magnitude)
+    else:
+        components = [select_name(fields, ["ElectricField-"+a, "ElectricField/"+a.lower(),
+                       "ElectricField_"+a, "ElectricField-V"+a.lower()]) for a in "XYZ"]
+        ef = "sqrt("+"+".join("<{0}>*<{0}>".format(n) for n in components)+")"
+    radial = "(0.5*(1+sign({:.12g}-sqrt(<X>*<X>+<Y>*<Y>))))".format(r)
+    high_e = "(0.5*(1+sign({}-{:.12g})))".format(ef, SCR_E_VPCM)
+    unity_name, roi_name, mask_name = [PREFIX+s for s in ["_SCR_Unity", "_SCR_ROI", "_SCR_Mask"]]
+    native_call("create_field Unity", sv.create_field, name=unity_name, plot=plot, function="<X>*0+1")
+    native_call("create_field ROI", sv.create_field, name=roi_name, plot=plot, function=radial)
+    native_call("create_field SCR", sv.create_field, name=mask_name, plot=plot, function=radial+"*"+high_e)
+    def integral(field):
+        # The same retained 3D plot is used even after other views become active.
+        # Do not pass dataset= here: that path failed in the user's T-2022.03 run.
+        return native_call("integrate_field "+field, sv.integrate_field,
+                           plot=plot, field=field, regions=["Bulk"], window=window)
+    # In this SDE, Bulk completely fills this box below Z=0 (no STI at Z<0).
+    # Verify coordinate units and region selection using an independent unity integral.
+    expected_box = 4*r*r*depth
+    box = checked_volume(integral(unity_name), "unity", expected_box*1.02)
+    if abs(box/expected_box-1) > .02:
+        raise ValueError("Unity integral disagrees with um^3 box volume; inspect units/region/geometry")
+    roi = checked_volume(integral(roi_name), "active ROI", box)
+    analytic_roi = np.pi*r*r*depth
+    if abs(roi/analytic_roi-1) > .05:
+        raise ValueError("Nodal radial mask differs from analytic cylinder volume by >5%; inspect mesh/coordinates")
+    volume = checked_volume(integral(mask_name), "SCR", roi)
+    METRICS.update({"SCR_volume_um3": volume, "SCR_volume_OK": 1,
+                    "SCR_volume_field": mask_name, "SCR_E_threshold_Vpcm": SCR_E_VPCM,
+                    "SCR_volume_radius_um": r, "SCR_volume_depth_max_um": depth,
+                    "SCR_volume_box_um3": box, "SCR_volume_ROI_um3": roi,
+                    "SCR_volume_ROI_analytic_um3": float(analytic_roi),
+                    "SCR_volume_indicator_formula": radial+"*"+high_e})
+    write_json("SCR_volume_details.json", {k:v for k,v in METRICS.items() if k.startswith("SCR_")})
+
+
+def integrate_scr_volume_full(plot, fields):
+    # Retain v1.2's separately validated below-STI volume for direct comparison.
+    integrate_scr_volume(plot, fields)
+    below = METRICS["SCR_volume_um3"]
+    METRICS.update({"SCR_volume_below_STI_um3": below, "SCR_volume_above_STI_um3": None,
+                    "SCR_volume_um3": None, "SCR_volume_OK": 0,
+                    "SCR_volume_Z_min_um": -SCR_DEPTH_MAX_UM,
+                    "SCR_volume_Z_max_um": SCR_BULK_TOP_Z_UM,
+                    "SCR_volume_box_below_um3": METRICS["SCR_volume_box_um3"],
+                    "SCR_volume_ROI_below_um3": METRICS["SCR_volume_ROI_um3"]})
+    try:
+        r, top = SCR_ACTIVE_RADIUS_UM, SCR_BULK_TOP_Z_UM
+        if not (0 < top <= .300):
+            raise ValueError("Upper SCR volume must stay within the known Bulk top")
+        window = [-r, -r, 0., r, r, top]
+        def integral(suffix):
+            return native_call("integrate_above_STI "+suffix, sv.integrate_field,
+                plot=plot, field=PREFIX+suffix, regions=["Bulk"], window=window)
+        # STI oxide removes volume in this upper slice. Do not assume a solid box/cylinder.
+        box = checked_volume(integral("_SCR_Unity"), "upper Bulk domain", 4*r*r*top)
+        roi = checked_volume(integral("_SCR_ROI"), "upper active Bulk ROI", box)
+        above = checked_volume(integral("_SCR_Mask"), "upper SCR contribution", roi)
+        METRICS.update({"SCR_volume_above_STI_um3": above, "SCR_volume_um3": below+above,
+                        "SCR_volume_OK": 1, "SCR_volume_box_above_um3": box,
+                        "SCR_volume_ROI_above_um3": roi,
+                        "SCR_volume_box_um3": METRICS["SCR_volume_box_below_um3"]+box,
+                        "SCR_volume_ROI_um3": METRICS["SCR_volume_ROI_below_um3"]+roi,
+                        "SCR_volume_ROI_analytic_note": "Analytic cylinder check applies only to the below-STI slice; upper slice excludes STI oxide."})
+    finally:
+        # An upper-slice failure must NOT leave the old partial volume labeled as complete.
+        write_json("SCR_volume_details.json", {k:v for k,v in METRICS.items() if k.startswith("SCR_")})
+
+
+def emit_scr_doe():
+    for name in ["SCR_center_nm", "SCR_width_nm", "SCR_volume_um3", "SCR_bias_V"]:
+        emit(name, METRICS.get(name))
+    emit("SCR_line_OK", METRICS.get("SCR_line_OK", 0))
+    emit("SCR_volume_OK", METRICS.get("SCR_volume_OK", 0))
+    emit("SCR_OK", int(bool(METRICS.get("SCR_line_OK")) and bool(METRICS.get("SCR_volume_OK"))))
+
+
+def parse_run_log(text):
+    fatal = "Exit due to failure" in text or "Step-size less than MinStep" in text
+    normal = "Sentaurus Device simulation finished" in text and "Good Bye !" in text
+    contacts = re.findall(r"^\s*cathode\s+([+\-\d.eE]+)\s+", text, re.M)
+    plots = re.findall(r"Writing plot '([^']+)'", text)
+    return {"normal_end_marker": normal, "failure_exit": fatal,
+            "complete_success": normal and not fatal,
+            "ion_integral_stop": "because ionization integrals meet specifications" in text,
+            "last_cathode_voltage_rounded_V": float(contacts[-1]) if contacts else None,
+            "plot_write_names": plots,
+            "newton_retries": text.count("Newton didn't converge")}
+
+
+def emit(name, value):
+    print("DOE: {} {}".format(name, "x" if value is None else "{:.12g}".format(value)))
+
+
+def flush():
+    METRICS["warnings"] = list(WARNINGS)
+    write_json("metrics.json", METRICS)
+    write_json("native_api_trace.json", NATIVE_CALLS)
+    with open(os.path.join(OUT, "metrics.txt"), "w", encoding="utf-8") as f:
+        for key, value in METRICS.items():
+            f.write("{} = {}\n".format(key, "NA" if value is None else value))
+
+
+def plot_csv(csv_path, tag, xname, ynames, title, xtitle, ytitle, log_y=False):
+    ds = PREFIX + "_" + tag + "_data"
+    sv.load_file(csv_path, name=ds)
+    plot = sv.create_plot(name=PREFIX + "_" + tag, xy=True)
+    for yname in ynames:
+        sv.create_curve(name=PREFIX+"_"+tag+"_"+yname, plot=plot,
+                        dataset=ds, axisX=xname, axisY=yname)
+    sv.set_plot_prop(plot=plot, title=title, show_grid=True, show_legend=True)
+    sv.set_axis_prop(plot=plot, axis="x", title=xtitle)
+    sv.set_axis_prop(plot=plot, axis="y", title=ytitle, type="log" if log_y else "linear")
+    export_png(plot, tag)
+    return plot
+
+
+def export_png(plot, tag):
+    if EXPORT_PNG:
+        optional(tag+"_PNG", lambda: sv.export_view(
+            os.path.join(OUT, tag+".png"), plots=[plot],
+            resolution="1400x900", overwrite=True))
+
+
+def coordinate_summary(coords, x, y, ztop):
+    return {"requested_X_um": x, "requested_Y_um": y, "requested_Z_interval_um": [-2.5, ztop],
+            "coordinate_source": "Explicit fields created on the original 3D plot with <X>, <Y>, <Z>; no cutline-distance conversion",
+            "returned": {k: {"count": len(a), "min": float(np.min(a)), "max": float(np.max(a))}
+                         for k, a in coords.items()}}
+
+
+def crop_global_profile(columns, x, y, ztop):
+    c = same_lengths(columns)
+    z = c["Z_global_um"]
+    if len(z) < 3:
+        raise ValueError("Too few global-coordinate samples: {}".format(len(z)))
+    if np.max(np.abs(c["X_global_um"]-x)) > 1e-4 or np.max(np.abs(c["Y_global_um"]-y)) > 1e-4:
+        raise ValueError("Global X/Y fields do not match the requested vertical line")
+    if z.min() < -10.00001 or z.max() > .30001:
+        raise ValueError("Global Z lies outside Candidate B Bulk: [{:.12g}, {:.12g}] um".format(z.min(), z.max()))
+    # A cut may include interpolated boundary samples beyond its two requested points.
+    # Check physical coordinates first, then crop aligned columns, without extrapolation.
+    order = np.argsort(z, kind="mergesort")
+    unique, inverse, counts = np.unique(z[order], return_inverse=True, return_counts=True)
+    data = {k: np.bincount(inverse, weights=a[order])/counts for k,a in c.items()}
+    if len(unique) < 3:
+        raise ValueError("Too few unique global Z coordinates")
+    if unique[0] > -SCR_DEPTH_MAX_UM or unique[-1] < min(0., ztop):
+        raise ValueError("Global Z does not cover SCR search depth: [{:.12g}, {:.12g}] um".format(unique[0], unique[-1]))
+    lo, hi = max(-2.5, float(unique[0])), min(ztop, float(unique[-1]))
+    if hi <= lo:
+        raise ValueError("No overlap with requested Z interval")
+    grid = np.unique(np.r_[lo, unique[(unique > lo) & (unique < hi)], hi])
+    result = {k: np.interp(grid, unique, a) for k,a in data.items()}
+    result["Z_global_um"] = grid
+    result["Depth_from_surface_um"] = .3-grid
+    result["Depth_from_STI_bottom_um"] = -grid
+    return result
+
+
+def add_global_coordinate_fields(plot):
+    result = {}
+    for axis in "XYZ":
+        name = PREFIX+"_Global"+axis
+        native_call("create_global_"+axis, sv.create_field,
+                    name=name, plot=plot, function="<{}>".format(axis))
+        result[axis] = name
+    return result
+
+
+def extract_global_profile(plot, coordinate_fields, label, x, y, ztop):
+    line = native_call("create_cutline "+label, sv.create_cutline, "free", plot=plot,
+                       regions=["Bulk"], points=[x, y, -2.5, x, y, ztop], name=PREFIX+"_line_"+label)
+    names = list(check_native_result(sv.list_variables(dataset=line), "list_variables "+label))
+    write_json(label+"_variables.json", names)
+    coords = {}
+    # Keep the original cutline Z only as diagnostic information; never guess its meaning.
+    native_z = select_name(names, ["Z"], False)
+    if native_z:
+        coords["Cutline_Z_as_returned"] = get(line, native_z)
+        save_csv(label+"_cutline_Z_raw.csv", coords)
+    for axis in "XYZ":
+        name = select_name(names, [coordinate_fields[axis]])
+        coords[axis+"_global_um"] = get(line, name)
+    coords = same_lengths(coords)
+    write_json(label+"_coordinate_diagnostics.json", coordinate_summary(coords, x, y, ztop))
+    save_csv(label+"_coordinates_raw.csv", coords)
+    print("SPAD3D COORD {}: N={} Z=[{:.12g}, {:.12g}] um; requested=[-2.5, {:.12g}]".format(
+          label, len(coords["Z_global_um"]), coords["Z_global_um"].min(), coords["Z_global_um"].max(), ztop))
+    cols = dict(coords)
+    cols["E_magnitude_Vpcm"] = electric_magnitude(line, names)
+    dn = select_name(names, ["DopingConcentration", "Doping", "NetDoping"], False)
+    donor = select_name(names, ["DonorConcentration", "PhosphorusActiveConcentration"], False)
+    acceptor = select_name(names, ["AcceptorConcentration", "BoronActiveConcentration"], False)
+    if donor and acceptor:
+        cols["Donor_cm3"], cols["Acceptor_cm3"] = get(line, donor), get(line, acceptor)
+    if dn:
+        cols["NetDoping_cm3"] = get(line, dn)
+    elif donor and acceptor:
+        cols["NetDoping_cm3"] = cols["Donor_cm3"]-cols["Acceptor_cm3"]
+    else:
+        raise KeyError("No net doping or donor/acceptor pair on cut")
+    for key, aliases in [("Potential_V", ["ElectrostaticPotential", "Potential"]),
+                         ("Electron_cm3", ["eDensity", "ElectronDensity"]),
+                         ("Hole_cm3", ["hDensity", "HoleDensity"])]:
+        cols[key] = get(line, select_name(names, aliases))
+    cols = same_lengths(cols)
+    save_csv(label+"_profile_before_crop.csv", cols)
+    if np.any(cols["Electron_cm3"] < 0) or np.any(cols["Hole_cm3"] < 0):
+        raise ValueError("Negative carrier density on cut")
+    cropped = crop_global_profile(cols, x, y, ztop)
+    info = coordinate_summary(coords, x, y, ztop)
+    info["selected_Z_interval_um"] = [float(cropped["Z_global_um"].min()), float(cropped["Z_global_um"].max())]
+    info["selected_samples"] = len(cropped["Z_global_um"])
+    write_json(label+"_coordinate_diagnostics.json", info)
+    return cropped
+
+
+def review_state(last_bias):
+    # Do not silently replace missing final state with V000 or an old V156 file.
+    if not os.path.isfile(LAST_TDR):
+        raise FileNotFoundError(LAST_TDR)
+    ds = PREFIX+"_last"
+    native_call("load_last_TDR", sv.load_file, LAST_TDR, name=ds)
+    plot = native_call("create_last_3D_plot", sv.create_plot, dataset=ds, name=PREFIX+"_3D_last")
+    sv.set_plot_prop(plot=plot, title="Last converged 3D state (~{:.6g} V); not 15.6 V".format(last_bias))
+    regions = list(sv.list_regions(dataset=ds))
+    fields = list(sv.list_fields(dataset=ds))
+    write_json("last_state_inventory.json", {"regions": regions, "fields": fields,
+               "file": LAST_TDR, "inferred_bias_V": last_bias})
+    if "Bulk" not in regions:
+        raise ValueError("Expected Bulk region missing; verify the chosen 3D dataset")
+    METRICS["SCR_bias_V"] = last_bias
+    optional("SCR_volume", lambda: integrate_scr_volume_full(plot, fields))
+    coordinate_fields = optional("global_coordinates", lambda: add_global_coordinate_fields(plot))
+    success = {"planes": [], "profiles": {}}
+    # Z is the global up direction. These are physical global coordinate planes.
+    for label, axis, at in [("XZ", "y", 0.0), ("YZ", "x", 0.0),
+                            ("XY_junction", "z", -0.17), ("XY_STI", "z", 0.15)]:
+        def plane(label=label, axis=axis, at=at):
+            cut = sv.create_cutplane(axis, at=at, dataset=ds, name=PREFIX+"_cut_"+label)
+            cp = sv.create_plot(dataset=cut, name=PREFIX+"_view_"+label)
+            available = list(sv.list_fields(dataset=cut))
+            write_json(label+"_fields.json", available)
+            sv.set_plot_prop(plot=cp, title="{} last-state (~{:.6g} V)".format(label, last_bias))
+            for field_tag, aliases in [("doping", ["DopingConcentration", "Doping", "NetDoping"]),
+                                       ("E", ["Abs(ElectricField)", "AbsElectricField", "Abs(ElectricField-V)"])]:
+                name = select_name(available, aliases, required=False)
+                if name:
+                    def render(name=name, field_tag=field_tag):
+                        # Separate views avoid leaving the prior field's bands enabled.
+                        fp = sv.create_plot(dataset=cut, name=PREFIX+"_"+label+"_"+field_tag)
+                        sv.set_field_prop(name, plot=fp, show_bands=True)
+                        sv.set_plot_prop(plot=fp, title="{} {} (~{:.6g} V)".format(label, field_tag, last_bias))
+                        export_png(fp, label+"_"+field_tag)
+                    optional(label+"_"+field_tag, render)
+                else:
+                    warn(label, "Field unavailable for display: "+field_tag)
+            success["planes"].append(label)
+        optional("plane_"+label, plane)
+
+    # center_X uses the SAME r=4.6875 um as frozen 2D; axis is a separate sample.
+    # STI5 intersects z>0 at r=12.5: restrict edge cut to silicon below z=0.
+    probes = [("axis", 0., 0., .299), ("center_X", SCR_CENTER_X_UM, 0., .299),
+              ("center_Y", 0., 4.6875, .299), ("edge_X", 12.5, 0., -.001),
+              ("edge_Y", 0., 12.5, -.001)]
+    for label, x, y, ztop in probes:
+        def profile(label=label, x=x, y=y, ztop=ztop):
+            if coordinate_fields is None:
+                raise RuntimeError("Explicit global coordinate fields unavailable; see native_api_trace.json")
+            cols = extract_global_profile(plot, coordinate_fields, label, x, y, ztop)
+            order = np.argsort(cols["Depth_from_STI_bottom_um"], kind="mergesort")
+            cols = {k: a[order] for k, a in cols.items()}
+            path = save_csv(label+"_last_state_profile.csv", cols)
+            if label == "center_X":
+                def extract_scr():
+                    result = scr_from_profile(cols["Depth_from_STI_bottom_um"], cols["NetDoping_cm3"],
+                                              cols["E_magnitude_Vpcm"], SCR_E_VPCM, SCR_DEPTH_MAX_UM,
+                                              SCR_BOUNDARY_DEPTH_MIN_UM)
+                    METRICS.update(result)
+                    METRICS["SCR_line_OK"] = 1
+                    write_json("SCR_centerline_details.json", dict(result, bias_V=last_bias,
+                               X_um=x, Y_um=y, E_threshold_Vpcm=SCR_E_VPCM))
+                optional("SCR_centerline", extract_scr)
+            # Common 2D comparison window, depth below STI bottom: 0..1.30 um.
+            m = (cols["Depth_from_STI_bottom_um"] >= 0) & (cols["Depth_from_STI_bottom_um"] <= 1.30)
+            if not np.any(m):
+                raise ValueError("No samples in shared 0..1.30 um comparison window")
+            idx = np.flatnonzero(m)[np.argmax(cols["E_magnitude_Vpcm"][m])]
+            success["profiles"][label] = {"Emax_in_window_Vpcm": float(cols["E_magnitude_Vpcm"][idx]),
+                "Emax_Z_um": float(cols["Z_global_um"][idx]), "X_um": x, "Y_um": y,
+                "bias_V_inferred": last_bias, "scope": "sampled cut only, not global maximum"}
+            optional(label+"_E_plot", lambda: plot_csv(path, label+"_E", "Depth_from_STI_bottom_um",
+                ["E_magnitude_Vpcm"], label+" last-state E", "Depth below STI bottom [um]", "|E| [V/cm]"))
+            optional(label+"_doping_plot", lambda: plot_csv(path, label+"_doping", "Depth_from_STI_bottom_um",
+                ["NetDoping_cm3"], label+" signed net doping", "Depth below STI bottom [um]", "ND-NA [cm^-3]"))
+        optional("profile_"+label, profile)
+    write_json("last_state_profile_summary.json", success)
+    METRICS["state_planes_completed"] = len(success["planes"])
+    METRICS["state_profiles_completed"] = len(success["profiles"])
+    METRICS["last_state_review"] = "COMPLETE" if len(success["planes"]) == 4 and len(success["profiles"]) == 5 else "PARTIAL"
+
+
+def main():
+    os.makedirs(OUT, exist_ok=False)
+    print("SPAD3D OUTPUT_DIRECTORY="+OUT)
+    flush()
+    try:
+        if not os.path.isfile(IV_FILE):
+            raise FileNotFoundError("Missing SDevice current file: "+IV_FILE)
+        METRICS["input_files"] = {name: {"exists": os.path.isfile(name),
+              "size": os.path.getsize(name) if os.path.isfile(name) else None,
+              "mtime": os.path.getmtime(name) if os.path.isfile(name) else None}
+              for name in [IV_FILE, LOG_FILE, LAST_TDR, V156_TDR]}
+        audit = None
+        if os.path.isfile(LOG_FILE):
+            with open(LOG_FILE, "r", encoding="utf-8", errors="replace") as f:
+                audit = parse_run_log(f.read())
+            METRICS["SDevice_log_audit"] = audit
+            if not audit["complete_success"]:
+                raise RuntimeError("SDevice log is incomplete or failed; do not treat this run as validated")
+        else:
+            warn("log", "Log missing; IV math can proceed but successful SDevice termination is unverified")
+
+        ds = PREFIX+"_IV"
+        sv.load_file(IV_FILE, name=ds)
+        names = list(sv.list_variables(dataset=ds))
+        write_json("IV_variables.json", names)
+        mapping = {}
+        for contact in ["anode", "cathode", "substrate"]:
+            mapping[contact+"_V"] = select_name(names, [contact+" OuterVoltage"])
+            mapping[contact+"_I"] = select_name(names, [contact+" TotalCurrent"])
+        mapping["PhiElectron"] = select_name(names, ["PhiElectron"])
+        mapping["PhiHole"] = select_name(names, ["PhiHole"])
+        raw = same_lengths({key: get(ds, name) for key, name in mapping.items()})
+        write_json("IV_variable_mapping.json", mapping)
+        # Explicitly validate the known experiment; do not hide wrong polarity with abs(V).
+        if max(np.max(np.abs(raw[k])) for k in ["anode_V", "substrate_V"]) > 1e-6:
+            raise ValueError("Expected grounded anode/substrate; wrong experiment or variable mapping")
+        bias = raw["cathode_V"]-raw["anode_V"]
+        if np.min(bias) < -1e-8 or np.any(np.diff(bias) < -1e-8):
+            raise ValueError("Expected monotonically increasing positive reverse bias")
+        if np.min(raw["PhiElectron"]) < 0 or np.min(raw["PhiHole"]) < 0:
+            raise ValueError("Negative ionization integral")
+        columns = {"ReverseBias_V": bias, "AnodeCurrent_A": raw["anode_I"],
+                   "CathodeCurrent_A": raw["cathode_I"], "SubstrateCurrent_A": raw["substrate_I"],
+                   "PhiElectron": raw["PhiElectron"], "PhiHole": raw["PhiHole"]}
+        save_csv("reverse_IV_raw.csv", columns)
+        c = sorted_mean_duplicates(columns)
+        c["MinPhi"] = np.minimum(c["PhiElectron"], c["PhiHole"])
+        c["ThresholdOne"] = np.ones_like(c["MinPhi"])
+        for contact in ["Anode", "Cathode", "Substrate"]:
+            c["Abs"+contact+"Current_A"] = np.abs(c[contact+"Current_A"])
+        c["KCL_signed_sum_A"] = c["AnodeCurrent_A"]+c["CathodeCurrent_A"]+c["SubstrateCurrent_A"]
+        current_scale = c["AbsAnodeCurrent_A"]+c["AbsCathodeCurrent_A"]+c["AbsSubstrateCurrent_A"]
+        c["KCL_fraction"] = np.abs(c["KCL_signed_sum_A"])/np.maximum(current_scale, 1e-30)
+        path = save_csv("reverse_IV.csv", c)
+        last_bias = float(bias[-1])
+        if audit and audit["last_cathode_voltage_rounded_V"] is not None:
+            if abs(last_bias-audit["last_cathode_voltage_rounded_V"]) > max(.005, abs(last_bias)*5e-4):
+                raise ValueError("PLT final voltage disagrees with log; files may be from different runs")
+        METRICS.update({"IV_samples_raw": len(bias), "IV_samples_unique": len(c["ReverseBias_V"]),
+                        "LastBias_V": last_bias, "last_min_phi": float(c["MinPhi"][-1]),
+                        "KCL_max_absolute_A": float(np.max(np.abs(c["KCL_signed_sum_A"]))),
+                        "last_KCL_fraction": float(c["KCL_fraction"][-1])})
+        usable = current_scale > 1e-18
+        if np.any(usable) and np.max(c["KCL_fraction"][usable]) > .01:
+            warn("KCL", "Terminal current imbalance exceeds 1% for total |I|>1e-18 A; inspect CSV")
+        crossing = first_upward_crossing(c["ReverseBias_V"], c["MinPhi"])
+        if crossing is None:
+            raise ValueError("min(PhiElectron,PhiHole)=1 is NOT bracketed; VBD is unavailable")
+        vbd = crossing["value_V"]
+        METRICS.update({"VBD_V": vbd, "VBD_definition": "first upward min(PhiElectron,PhiHole)=1; linear interpolation",
+            "VBD_bracket": crossing, "Reference2D_VBD_V": REFERENCE_2D_VBD_V,
+            "DeltaVBD_3D_minus_2D_V": vbd-REFERENCE_2D_VBD_V,
+            "DeltaVBD_percent": 100*(vbd/REFERENCE_2D_VBD_V-1),
+            "VBD_extraction": "VALID", "last_state_review": "NOT_RUN"})
+        flush()
+        optional("IV_plot", lambda: plot_csv(path, "IV", "ReverseBias_V",
+            ["AbsAnodeCurrent_A", "AbsCathodeCurrent_A", "AbsSubstrateCurrent_A"],
+            "3D IV (AvalPostProcessing)", "Reverse bias [V]", "|Terminal current| [A]", True))
+        optional("IonIntegral_plot", lambda: plot_csv(path, "IonIntegral", "ReverseBias_V",
+            ["PhiElectron", "PhiHole", "MinPhi", "ThresholdOne"],
+            "VBD = {:.6g} V (min Phi = 1)".format(vbd), "Reverse bias [V]", "Ionization integral"))
+        # Require normal log termination and evidence of the final plot write before TDR review.
+        if REVIEW_LAST_STATE:
+            if audit and os.path.basename(LAST_TDR) in [os.path.basename(n) for n in audit["plot_write_names"]]:
+                METRICS["last_state_review"] = "FAILED"
+                optional("last_state", lambda: review_state(last_bias))
+            else:
+                METRICS["last_state_review"] = "SKIPPED_UNVERIFIED_LOG"
+                warn("last_state", "Final TDR write not verified in a successful log")
+        METRICS["status"] = "VBD_VALID_WITH_WARNINGS" if WARNINGS else "VBD_VALID"
+        flush()
+        for name, value in [("VBD_V", vbd), ("DeltaVBD_V", vbd-REFERENCE_2D_VBD_V),
+                            ("LastBias_V", last_bias), ("VBD_OK", 1),
+                            ("SCR15p6_OK", 0), ("SCR15p6_um", None)]:
+            emit(name, value)
+        emit_scr_doe()
+        print("SPAD3D STATUS="+METRICS["status"])
+        print("SPAD3D LAST_STATE_REVIEW="+METRICS["last_state_review"])
+        print("SPAD3D SCR_15p6=NOT_COMPUTED; last-state profiles are not SCR at 15.6 V")
+    except Exception:
+        METRICS["status"] = "FAIL"
+        METRICS["error"] = traceback.format_exc()
+        flush()
+        emit("VBD_OK", 0)
+        emit("VBD_V", None)
+        emit("SCR15p6_OK", 0)
+        for name in ["SCR_center_nm", "SCR_width_nm", "SCR_volume_um3", "SCR_bias_V"]:
+            METRICS[name] = None
+        METRICS["SCR_line_OK"] = METRICS["SCR_volume_OK"] = 0
+        emit_scr_doe()
+        flush()
+        raise
+
+
+main()

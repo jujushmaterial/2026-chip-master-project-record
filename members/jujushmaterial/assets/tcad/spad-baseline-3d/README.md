@@ -1,4 +1,37 @@
-# CMP SPAD 3D Reference Baseline — SDE Candidate-B v2.6
+# CMP SPAD 3D Baseline — SDE v2.6 / SDevice v1.1 / SVisualPy v1.3
+
+## 현재 실행 기준 — 2026-11-16 기록
+
+**향후 3D 구조 테스트는 아래 SDevice v1.1과 SVisualPy v1.3을 공통 기준 코드로 사용한다.** SDE Candidate-B v2.6은 비교 기준 구조로 보존한다. 구조 후보마다 SDE를 변경하더라도 전기 계산·추출 기준을 함께 바꾸지 않는다. 구조별 좌표·영역·접촉 호환성은 실행 전에 확인한다.
+
+| 단계 | 기준 코드 전문 (TXT) | 확인 범위 |
+|---|---|---|
+| SDE | [Candidate-B v2.6](./CMP_SPAD_3D_CandidateB_v2.6_RadialCoarseBulk_UpperSiZFixed_DualMSH.txt) | 기존 확정 원본 보존, electrical/physical Dual MSH |
+| SDevice | [v1.1 ParDiSo](./CMP_SPAD_3D_v2p6_SDevice_VBD_SCR_v1p1_ParDiSo.txt) | 사용자 서버에서 2026-11-09 정상 종료 로그 확인 |
+| SVisualPy | [v1.3 VBD/SCR DOE](./CMP_SPAD_3D_v2p6_SVisualPy_VBD_SCR_DOE_v1p3.txt) | 사용자 DOE 화면에서 VBD·SCR 중심/폭/부피 확인, 중심선 CSV 독립 재계산 |
+
+| 결과 | 현재 값 | 평가 상태 |
+|---|---:|---|
+| VBD | 14.9128079157 V | sampled `min(PhiElectron,PhiHole)=1` 선형 보간 |
+| 2D 대비 ΔVBD | −0.885190138673 V | 기준 2D VBD=15.7979980544 V |
+| SCR 평가 전압 | 14.9204276161 V | 마지막 수렴 상태; 보간 VBD와 다름 |
+| SCR 중심 | 150.684809982 nm | STI 바닥에서 아래로 양의 깊이 |
+| SCR 폭 | 305.471404049 nm | 중심 수직선의 전계 경계 간 거리 |
+| SCR 부피 | 126.117920651 µm³ | Bulk 내 고전계 마스크의 3D 적분 근사 |
+
+**확정 범위는 재사용할 코드와 현재 실행 결과다.** 2D/3D 동일 전압 비교, 3D 메시 수렴, 실제 광자 검출 성능 검증은 미완료다. 15.6 V SCR은 계산되지 않았으며 `SCR15p6_OK=0`, `SCR15p6_um=x`는 이 사실을 나타낸다.
+
+- [상세 전기 결과·정의·오류 수정 이력](./ELECTRICAL_BASELINE_REPORT_2026-11-16.md)
+- [향후 구조 테스트의 공통 코드 사용 결정](./ELECTRICAL_TEST_POLICY_2026-11-16.md)
+- [결과 JSON](./baseline-results.json) · [DOE 결과표 CSV](./baseline-results.csv) · [코드 SHA-256 명세](./baseline-manifest.json)
+- [사용자 DOE 화면](./evidence/user-supplied-workbench-doe.png) · [중심선 재계산 요약](./evidence/profile-recalculation.json)
+- [2026-11-09 SDevice 완료 기록](../../../timeline/2026-11/2026-11-09.md) · [2026-11-16 정리·채택 기록](../../../timeline/2026-11/2026-11-16.md)
+
+코드 파일은 검증된 원본 그대로 보존했다. SDevice 머리말의 `STATIC REVIEW ONLY` 및 15.6 V SCR 문구, SVisualPy 머리말의 `server ... unverified`는 배포 당시 주석이다. 이후 확인 상태는 위 표와 상세 보고서에 기록한다. **현재 SCR 평가 기준은 SVisualPy의 LAST 상태이며, 15.6 V가 아니다.**
+
+아래는 **2026-10-09의 SDE 확정 기록**이다. 당시의 미완료 목록은 역사적 상태이며, 현재 상태는 위 항목과 후속 보고서를 우선한다.
+
+---
 
 **확정일:** 2026-10-09 · **연구자:** 주상현(A, jujushmaterial)  
 **확정 범위:** 3D 구조·도핑·mesh 생성용 SDE 코드 baseline. **3D SDevice 전기적 특성 검증 완료를 의미하지 않음.**
@@ -85,3 +118,9 @@ PW/DNW/NW/P+는 3D `General` analytic Gaussian profile로 구현되며, lateral 
 - [공동 SPAD 연구계획서](../../../../../shared/decisions/SPAD_연구계획서.md)
 
 **AI 사용:** ChatGPT(코드 수정 보조, troubleshooting, 문서화). 실제 TCAD 실행은 사용자 서버에서 수행되었으며 이 문서는 사용자 이미지·대화 기록·SDE 원본을 근거로 한다. 실측/논문값, 2D 시뮬레이션, surrogate assumption, 미검증 결과를 구분한다.
+
+## 8. 수정 이력
+
+- 2026-10-09: SDE v2.6 기준 코드와 구조·메시·Dual MSH 기록.
+- 2026-11-16: SDevice v1.1 / SVisualPy v1.3 재사용 기준, 사용자 실행 결과, 근거 자료 및 후속 타임라인 추가. 10월의 SDE 기록과 원본 코드는 보존. 메시 수렴/동일 전압 비교는 여전히 미완료로 구분.
+

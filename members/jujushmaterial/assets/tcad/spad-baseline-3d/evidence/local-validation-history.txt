@@ -1,0 +1,51 @@
+HISTORICAL LOCAL VALIDATION RECORD
+Archived 2026-11-16; not a new server run.
+Mock execution output omitted to avoid confusing test values with measured DOE.
+
+LOCAL TESTS including user CSV; native volume tests use mocks. Not Sentaurus execution.
+TXT SHA256: 0068b7eead198e3f8e9d29dfee99d2785a100766686317d8bba0daf82f5a9b14
+
+test_37_actual_user_profile_negative_upper_boundary_is_preserved (__main__.ActualProfileTests.test_37_actual_user_profile_negative_upper_boundary_is_preserved) ... ok
+test_38_volume_sum_preserves_legacy_slice_and_excludes_oxide (__main__.ActualProfileTests.test_38_volume_sum_preserves_legacy_slice_and_excludes_oxide) ... ok
+test_39_upper_failure_does_not_report_partial_volume_as_complete (__main__.ActualProfileTests.test_39_upper_failure_does_not_report_partial_volume_as_complete) ... ok
+test_01_delivered_script_compiles_after_workbench_substitution (test_svisual_vbd.ExtractionTests.test_01_delivered_script_compiles_after_workbench_substitution) ... ok
+test_02_min_phi_crossing_matches_log_based_interpolation (test_svisual_vbd.ExtractionTests.test_02_min_phi_crossing_matches_log_based_interpolation) ... ok
+test_03_one_carrier_above_threshold_is_not_breakdown (test_svisual_vbd.ExtractionTests.test_03_one_carrier_above_threshold_is_not_breakdown) ... ok
+test_04_no_extrapolation_beyond_data (test_svisual_vbd.ExtractionTests.test_04_no_extrapolation_beyond_data) ... ok
+test_05_exact_equality_and_first_upward_crossing (test_svisual_vbd.ExtractionTests.test_05_exact_equality_and_first_upward_crossing) ... ok
+test_06_missing_lower_bracket_rejected (test_svisual_vbd.ExtractionTests.test_06_missing_lower_bracket_rejected) ... ok
+test_07_nonfinite_or_invalid_shape_rejected (test_svisual_vbd.ExtractionTests.test_07_nonfinite_or_invalid_shape_rejected) ... ok
+test_08_duplicate_voltage_matches_2d_mean_convention (test_svisual_vbd.ExtractionTests.test_08_duplicate_voltage_matches_2d_mean_convention) ... ok
+test_09_terminal_matching_does_not_confuse_contacts (test_svisual_vbd.ExtractionTests.test_09_terminal_matching_does_not_confuse_contacts) ... ok
+test_10_all_three_electric_field_components_used (test_svisual_vbd.ExtractionTests.test_10_all_three_electric_field_components_used) ... ok
+test_11_missing_ez_never_falls_back_to_2d_magnitude (test_svisual_vbd.ExtractionTests.test_11_missing_ez_never_falls_back_to_2d_magnitude) ... ok
+test_12_actual_log_has_successful_ionization_stop_and_no_v156 (test_svisual_vbd.ExtractionTests.test_12_actual_log_has_successful_ionization_stop_and_no_v156) ... ok
+test_13_truncated_or_failed_log_not_passed (test_svisual_vbd.ExtractionTests.test_13_truncated_or_failed_log_not_passed) ... ok
+test_14_mock_api_end_to_end_units_csv_status_and_scr_guard (test_svisual_vbd.ExtractionTests.test_14_mock_api_end_to_end_units_csv_status_and_scr_guard) ... ok
+test_15_mixed_log_plt_rejected (test_svisual_vbd.ExtractionTests.test_15_mixed_log_plt_rejected) ... ok
+test_16_unbracketed_run_leaves_failure_with_no_vbd (test_svisual_vbd.ExtractionTests.test_16_unbracketed_run_leaves_failure_with_no_vbd) ... ok
+test_17_unsupported_3d_api_preserves_vbd_but_reports_state_failure (test_svisual_vbd.ExtractionTests.test_17_unsupported_3d_api_preserves_vbd_but_reports_state_failure) ... ok
+test_28_native_error_string_is_not_converted_to_float (test_svisual_runtimefix.RuntimeFixTests.test_28_native_error_string_is_not_converted_to_float) ... ok
+test_29_plot_reference_avoids_observed_dataset_error (test_svisual_runtimefix.RuntimeFixTests.test_29_plot_reference_avoids_observed_dataset_error) ... ok
+test_30_create_field_failure_stops_before_integrating (test_svisual_runtimefix.RuntimeFixTests.test_30_create_field_failure_stops_before_integrating) ... ok
+test_31_extended_physical_line_cropped_with_aligned_data (test_svisual_runtimefix.RuntimeFixTests.test_31_extended_physical_line_cropped_with_aligned_data) ... ok
+test_32_wrong_xy_is_not_silently_cropped (test_svisual_runtimefix.RuntimeFixTests.test_32_wrong_xy_is_not_silently_cropped) ... ok
+test_33_outside_bulk_and_wrong_coordinate_units_rejected (test_svisual_runtimefix.RuntimeFixTests.test_33_outside_bulk_and_wrong_coordinate_units_rejected) ... ok
+test_34_reversed_duplicate_z_samples_keep_columns_aligned (test_svisual_runtimefix.RuntimeFixTests.test_34_reversed_duplicate_z_samples_keep_columns_aligned) ... ok
+test_35_explicit_fields_used_when_builtin_z_is_distance (test_svisual_runtimefix.RuntimeFixTests.test_35_explicit_fields_used_when_builtin_z_is_distance) ... ok
+test_36_failed_coordinate_validation_preserves_raw_diagnostics (test_svisual_runtimefix.RuntimeFixTests.test_36_failed_coordinate_validation_preserves_raw_diagnostics) ... ok
+test_18_center_and_width_nm_from_known_junction (test_svisual_scr_doe.SCRTests.test_18_center_and_width_nm_from_known_junction) ... ok
+test_19_missing_boundary_is_na_not_window_width (test_svisual_scr_doe.SCRTests.test_19_missing_boundary_is_na_not_window_width) ... ok
+test_20_no_junction_does_not_guess_first_two_crossings (test_svisual_scr_doe.SCRTests.test_20_no_junction_does_not_guess_first_two_crossings) ... ok
+test_21_low_field_valley_is_not_scr (test_svisual_scr_doe.SCRTests.test_21_low_field_valley_is_not_scr) ... ok
+test_22_field_volume_uses_bulk_3d_window_and_mesh_integral (test_svisual_scr_doe.SCRTests.test_22_field_volume_uses_bulk_3d_window_and_mesh_integral) ... ok
+test_23_volume_unit_mismatch_rejected (test_svisual_scr_doe.SCRTests.test_23_volume_unit_mismatch_rejected) ... ok
+test_24_impossible_or_nonfinite_volume_rejected (test_svisual_scr_doe.SCRTests.test_24_impossible_or_nonfinite_volume_rejected) ... ok
+test_25_volume_requires_ez_in_component_fallback (test_svisual_scr_doe.SCRTests.test_25_volume_requires_ez_in_component_fallback) ... ok
+test_26_doe_all_values_and_validity (test_svisual_scr_doe.SCRTests.test_26_doe_all_values_and_validity) ... ok
+test_27_missing_scr_doe_fields_are_not_numeric_zero (test_svisual_scr_doe.SCRTests.test_27_missing_scr_doe_fields_are_not_numeric_zero) ... ok
+
+----------------------------------------------------------------------
+Ran 39 tests in 1.444s
+
+OK

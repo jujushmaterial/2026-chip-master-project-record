@@ -1,0 +1,14 @@
+metric,value,unit,evidence
+VBD_V,14.9128079157,V,user_supplied_doe_screenshot
+DeltaVBD_V,-0.885190138673,V,user_supplied_doe_screenshot
+LastBias_V,14.9204276161,V,user_supplied_doe_screenshot
+VBD_OK,1,dimensionless,visible_in_doe_screenshot
+SCR_center_nm,150.684809982,nm,doe_screenshot_and_independent_profile_recalculation
+SCR_width_nm,305.471404049,nm,doe_screenshot_and_independent_profile_recalculation
+SCR_volume_um3,126.117920651,um^3,doe_screenshot_only_not_independently_integrated
+SCR_bias_V,14.9204276161,V,user_supplied_doe_screenshot
+SCR15p6_OK,0,dimensionless,not_computed
+SCR15p6_um,x,um,not_computed_displayed_as_x
+SCR_line_OK,x,dimensionless,not_verified_from_cropped_screenshot
+SCR_volume_OK,x,dimensionless,not_verified_from_cropped_screenshot
+SCR_OK,x,dimensionless,not_verified_from_cropped_screenshot

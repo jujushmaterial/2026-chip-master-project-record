@@ -1,0 +1,13 @@
+{
+  "date": "2026-11-16",
+  "artifact_files_checked": 16,
+  "relative_links_checked": 58,
+  "code_originals_identical": true,
+  "svisual_syntax_after_macro_substitution": "PASS",
+  "json_csv_consistency": "PASS",
+  "actual_profile_recalculation": "PASS",
+  "existing_remote_sde_blob_unchanged": true,
+  "member_scope": "members/jujushmaterial only",
+  "credentials_and_private_runtime_paths": "not_detected_in_text_files",
+  "new_sentaurus_execution": false
+}

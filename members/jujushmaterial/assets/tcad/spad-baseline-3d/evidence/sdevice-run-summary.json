@@ -1,0 +1,70 @@
+{
+  "source_basename": "n2_des.log",
+  "source_sha256": "344a28762e21827b64267457d54b53dd855b64db882cefa9721bc3209ef78d73",
+  "source_bytes": 1128213,
+  "source_lines": 21247,
+  "start_KST": "2026-11-08T17:15:47+09:00",
+  "finish_KST": "2026-11-09T02:54:50+09:00",
+  "normal_end_marker": true,
+  "failure_exit": false,
+  "stop_reason": "ionization integrals meet specifications",
+  "final_electron_ion_integral": 1.00103,
+  "final_hole_ion_integral": 1.00375,
+  "wallclock_seconds": 34743.01,
+  "peak_memory_GB": 32.23,
+  "input_grid_points": 373845,
+  "device_internal_vertices": 379175,
+  "tetrahedra": 2117009,
+  "non_delaunay_elements": 285,
+  "plot_write_names": [
+    "n2_V000_des.tdr",
+    "n2_des.tdr"
+  ],
+  "source_line_evidence": [
+    {
+      "line": 22,
+      "text": "Date: Sun Nov  8 17:15:47 2026  (KST)"
+    },
+    {
+      "line": 495,
+      "text": "Number of grid points is 373845."
+    },
+    {
+      "line": 539,
+      "text": "NumberOfVertices = 379175"
+    },
+    {
+      "line": 541,
+      "text": "NumberOfTetrahedrons = 2117009  (100.0 %)"
+    },
+    {
+      "line": 544,
+      "text": "NumberOfNonDelaunayElements =    285  ( 0.01 %)"
+    },
+    {
+      "line": 21231,
+      "text": "Finished quasi-stat., because ionization integrals meet specifications."
+    },
+    {
+      "line": 21234,
+      "text": "Writing plot 'n2_des.tdr' (TDR format) ... done."
+    },
+    {
+      "line": 21242,
+      "text": "Sentaurus Device peak memory usage: 32.23 gigabytes"
+    },
+    {
+      "line": 21244,
+      "text": "wallclock: 34743.01 s (9 h:39 m:03 s)"
+    },
+    {
+      "line": 21246,
+      "text": "Sentaurus Device simulation finished (Date: Mon Nov  9 02:54:50 2026  (KST))."
+    }
+  ],
+  "notes": [
+    "Summary derived from user-supplied full log; full raw log not uploaded",
+    "Exact last bias and VBD are taken from DOE, not rounded log values",
+    "Mesh quality statistics do not establish mesh convergence"
+  ]
+}
