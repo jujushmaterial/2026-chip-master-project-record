@@ -1,0 +1,19 @@
+2026-11-25 local static/mock verification (not a Sentaurus run)
+PASS CSV: 37/36/36 rows, 109 unique; exact factorial + Final; 14 headers, all fixed values
+PASS Python preprocessor simulation: 109 rows x 2 updated scripts; all input macros resolved
+PASS mock VBD=15.0: SCR/ATP biases 14.812005/15.750000 V, own SCR center 285.714286 nm, ATP 0.389732143; field metrics exact; SD2/SD3 snapshot targets reconstructed
+PASS mock VBD=16.0: SCR/ATP biases 15.799472/16.800000 V, own SCR center 325.714286 nm, ATP 0.409732143; field metrics exact; SD2/SD3 snapshot targets reconstructed
+PASS negative tests: missing junction / out-of-range ATP / missing optional field / stale ATP bias / ATP_X<=1 handled
+PASS actual six-deck macro audit: 15/15 automatic variables declared; no manual electrical input macros
+PASS actual six-deck graph, mesh references, 7 SD2 and 8 SD3 Plot prefixes, PLT/TDR readers, ramp endpoints
+PASS numeric substitution at mock VBD=12 V: SD2 end=15.000000, ATP=12.600000, DARK=11.849604
+PASS numeric substitution at mock VBD=15 V: SD2 end=16.500000, ATP=15.750000, DARK=14.812005
+PASS numeric substitution at mock VBD=16 V: SD2 end=17.500000, ATP=16.800000, DARK=15.799472
+PASS numeric substitution at mock VBD=25 V: SD2 end=26.500000, ATP=26.250000, DARK=24.686675
+PASS SVisualPy3 mock VBD=15 and 16: Dark_OK=1, near bias and diagnostic reference verified
+PASS 109 rows x 3 Python syntax checks (327)
+PASS all three SDevice Math Iterations=100 and Number_of_Threads=64; initial Coupled Iterations=200 retained
+PASS nine published deck/CSV blobs match local SHA-1 Git blob hashes
+NOTE Actual SWB preprocessing, convergence, and real TDR/PLT IO not tested.
+NOTE Last actual SWB report: SD2_END_V undefined at n21; n20 preprocessing/run and downstream re-preprocessing not yet confirmed.
+NOTE Four upstream process/mesh copies use existing Electrical_Test Git blobs; actual server versions not reverified.
